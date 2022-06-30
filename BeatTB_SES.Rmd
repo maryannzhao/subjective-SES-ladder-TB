@@ -1,0 +1,1990 @@
+---
+title: "BeatTB_SES"
+author: "Maryann"
+date: "5/5/2021"
+output:
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
+library(gridExtra)
+library(pastecs)
+library(qwraps2)
+library(grid)
+library(lattice)
+library(ggplot2)
+library(gt)
+library(glue)
+library(webshot)
+library(GGally)
+library(MASS)
+library(ggpubr)
+library(corrplot)
+library(devtools)
+library(ggbiplot)
+library(RColorBrewer)
+library(factoextra)
+library(BBmisc)
+library(e1071)
+library(formattable)
+library(qwraps2)
+library(vcd)
+library(tidyr)
+library(knitr)
+#library(kableExtra)
+library(finalfit)
+library(DescTools)
+library(cowplot)
+library(vegan)
+library(gtsummary)
+knitr::opts_knit$set(root.dir = "~/Dropbox (MIT)/Murray_Lab/BeatTB/Dec2021")
+
+```
+
+```{r}
+#read in beattb data
+beattb <- read_csv("~/Dropbox (MIT)/Murray_Lab/BeatTB/Sept2021/beattb_demo_202108.csv")
+beattb_out <- read_csv("~/Dropbox (MIT)/Murray_Lab/BeatTB/July2021/beatTB_20Agosto2021_SESactual.csv")
+beattb_out2 <- read_csv("~/Dropbox (MIT)/Murray_Lab/BeatTB/Dec2021/20211222_Beattb_Retest.csv")
+beattb_out_full <- read_csv("~/Dropbox (MIT)/Murray_Lab/BeatTB/Dec2021/20211221_ladder_retestfull.csv")
+```
+
+###---Functions ---###
+```{r}
+#fun: Make contingency table to summarize variables
+#input: variable table[column]
+tblFun <- function(x){
+    tbl <- table(x)
+    res <- cbind(tbl,round(prop.table(tbl)*100,2))
+    colnames(res) <- c('Count','Percentage')
+    res
+}
+
+#fun: Plot histogram function
+#input: dataset, column - value to be counted
+plot_histogram = function (data, column) {
+    ggplot(data, aes_string(x = column)) +
+        geom_bar(fill= "#69B3A2") +
+        xlab(column) + 
+        theme_minimal()
+}
+
+plot_histogram_num = function (data, column) {
+    ggplot(data, aes_string(x = column)) +
+        geom_histogram(fill= "#69B3A2") + 
+        #scale_x_binned() +
+        xlab(column) + 
+        theme_minimal()
+}
+
+#fun: Violin plot function
+#input: dataset, row - x axis, column - y axis 
+#row must be given as a factor 
+plot_violin = function (data, row, column){
+  data %>%
+    ggplot(aes_string(x = row)) + 
+    geom_violin(mapping = aes_string(y = column), alpha = 0.5, trim = FALSE, fill = '#99D8C9')  +
+    geom_boxplot(aes_string(y = column), width = 0.1) + 
+    theme_minimal() 
+}
+
+#fun: Draw balloon plots 
+#innput: dataset, row - x axis, column - y axis 
+plot_balloon = function (data, row, column){
+  data %>%
+    ggplot(aes_string(x = row, y = column)) + 
+    geom_count(mapping = aes(color = ..n..), alpha = 0.5) + 
+    guides(color = 'legend')
+}
+
+#fun: plot paired histogram 
+#input: data, row - x axis, column - variable to pair by
+plot_hist_pair = function (data, row, column){
+  data %>%
+  ggplot() +
+  geom_bar(aes(x=row, fill = as.factor(column)), position  = "dodge") +
+  scale_fill_brewer(palette = "Paired", name = "WAMI - SES Ladder") +
+  theme_minimal() + 
+  theme(legend.position = "none") 
+  
+}
+
+```
+
+###---Recode income---###
+```{r}
+#1, <400 | 2, 400 to 600|3, 600 to 700|4, 700 to 800 | 5, 800 to 900 |6, 900 to 1000 | 7, 1000 to 1300 |8, 1300 to 1650 | 9,  > 1650 |0, doesn't know.
+beattb$income[beattb$income < 400 & beattb$income > 9] <- 1
+beattb$income[beattb$income >= 400 & beattb$income < 600] <- 2
+beattb$income[beattb$income >= 600 & beattb$income < 700] <- 3
+beattb$income[beattb$income >= 700 & beattb$income < 800] <- 4
+beattb$income[beattb$income >= 800 & beattb$income < 900] <- 5
+beattb$income[beattb$income >= 900 & beattb$income < 1000] <- 6
+beattb$income[beattb$income >= 1000 & beattb$income < 1300] <- 7
+beattb$income[beattb$income >= 1300 & beattb$income < 1650] <- 8
+beattb$income[beattb$income >= 1650] <- 9
+```
+
+###--- WAMI: PCA for assets---###
+```{r}
+#beattb.pca - compute PCA based on 15 assets
+#center shifts variables to be zero centered, scale indicates variables should have unit variance before analysis
+beattb.pca <- prcomp(beattb[40:54], center = TRUE, scale.=TRUE)
+
+#scree plot of eigenvalues
+scree <- fviz_eig(beattb.pca)
+ggsave(filename = "PCA_plot1.png", plot = scree)
+
+#plot index
+fviz_pca_ind(beattb.pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE,     # Avoid text overlapping
+             label = "none"
+             )
+#plot contributions
+fviz_pca_var(beattb.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+#plot both
+fviz_pca_biplot(beattb.pca, repel = TRUE,
+                col.var = "#2E9FDF", # Variables color
+                col.ind = "#696969",  # Individuals color
+                label = "none"
+                )
+# Eigenvalues
+eig.val <- get_eigenvalue(beattb.pca)
+eig.val
+
+# Results for Variables
+res.var <- get_pca_var(beattb.pca)
+res.var$coord          # Coordinates
+res.var$contrib        # Contributions to the PCs
+res.var$cos2           # Quality of representation
+beattb.pca_var <- as.data.frame(res.var$contrib)
+write.csv(beattb.pca_var, "PCA_var1.csv")
+
+# Results for individuals
+res.ind <- get_pca_ind(beattb.pca)
+res.ind$coord          # Coordinates
+res.ind$contrib        # Contributions to the PCs
+res.ind$cos2           # Quality of representation
+
+#normalize pca scores from 0 to 1
+# range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+# #pc1.nml <- (beattb.pca$x[,1] - mean(beattb.pca$x[,1])) / sd(beattb.pca$x[,1])
+# beattb$pc1 <- range01(beattb.pca$x[,1])
+beattb$pc1 <- beattb.pca$x[,1]
+
+#create 9 quantiles for PCA and cut PCA scores into 9 categories
+len <- (max(beattb.pca$x[,1])- min(beattb.pca$x[,1]))
+brk <- seq(min(beattb.pca$x[,1]), max(beattb.pca$x[,1]), len/9)
+brk[10] <- Inf
+beattb <- beattb %>%
+  mutate(pc1_nml = cut(pc1, breaks = brk, labels = c(0:8), include.lowest = TRUE, right = TRUE)) #pc1_nml - 9 equal categories
+
+
+#histogram pc1 scores (normalized to 1)
+pc1 <- plot_histogram_num(beattb, colnames(beattb[65])) 
+ggsave(filename = "PCA_plot1.png", plot = pc1)
+
+# ggplot(beattb, aes_string(x = colnames(beattb[65]))) +
+#         geom_histogram(fill= "#69B3A2", binwidth = 0.5) +
+#         xlab(colnames(beattb[65])) + 
+#         theme_minimal()
+
+#histogram pc1 scores (9 equal categories)
+pc1b <- plot_histogram(beattb, colnames(beattb[66]))
+ggsave(filename = "PCA_plot1b.png", plot = pc1b)
+
+#scatter plot of SES ladder vs pc1 (noramlize 0 to 1)
+pc2 <- beattb %>%
+  ggplot() +
+  geom_point(aes(x = SES_scale, y = pc1), color = "#69B3A2", alpha = 0.6) +
+  scale_x_discrete(limits = 0:11) +
+  theme_minimal()
+ggsave(filename = "PCA_plot2.png", plot = pc2)
+
+#violin plot of SES ladder vs pc1 (noramlize 0 to 1)
+pc3 <- beattb %>%
+  ggplot(aes(x = SES_scale, y = pc1)) +
+  geom_violin(aes(group = cut_width(SES_scale, 1)), color = "#69B3A2", alpha = 0.6) +
+  scale_x_discrete(limits = 0:11) +
+  theme_minimal() +
+  geom_boxplot(aes(group = cut_width(SES_scale, 1)), width=0.1)
+ggsave(filename = "PCA_plot3.png", plot = pc3)
+
+#scatter plot of WAMI vs pc1 (noramlize 0 to 1)
+pc4 <- beattb %>%
+  ggplot() +
+  geom_point(aes(x = WAMI, y = pc1), color = "#69B3A2", alpha = 0.6) +
+  theme_minimal() +
+  geom_smooth(aes(x = WAMI, y = pc1))
+ggsave(filename = "PCA_plot4.png", plot = pc4)
+
+#plot of PC1 vs PC2
+pc5 <- ggbiplot(beattb.pca, obs.scale = 1, var.scale = 1, alpha = 0.5, ellipse = TRUE) +
+  theme_minimal()
+ggsave(filename = "PCA_plot5.png", plot = pc5)
+
+#violin plots of SES scores vs income
+plot_violin_income = function (data, score){
+  data %>%
+    ggplot(aes(x = as.factor(income))) +
+    geom_violin(mapping = aes(y = score), alpha = 0.5, trim = FALSE, fill = '#99D8C9')  +
+    geom_boxplot(aes(y = score), width = 0.1) +
+    theme_minimal() +
+    xlab("income") +
+    ylab(deparse(substitute(score)))
+}
+
+#violin plot of WAMI vs income
+pc6 <- plot_violin_income(beattb, beattb$WAMI)
+ggsave(filename = "PCA_plot6.png", plot = pc6, width = 8)
+
+#violin plot of PCA (equal categories) vs income
+pc7 <-plot_violin_income(beattb, beattb$pc1)
+ggsave(filename = "PCA_plot7.png", plot = pc7, width = 8)
+
+#violin plot of ladder vs income
+pc8 <-plot_violin_income(beattb, beattb$SES_scale)
+ggsave(filename = "PCA_plot8.png", plot = pc8, width = 8)
+
+```
+
+###--- Calculating WAMI Score and rescaling to 10 points ---###
+```{r, results = "asis"}
+#Water and Sanitation - 4 is improved, 0 is unimproved
+beattb <- beattb %>%
+  mutate(h2o = if_else(drk_wt_src <=5, 4, 0)) %>% #improved water
+  mutate(sanitation = if_else(toilet_type >= 5 & toilet_type <=10, 4, 0)) %>% #improved sanitation
+  rowwise() %>%
+  dplyr::mutate(h2o_sani = sum(c_across(h2o:sanitation))) #add water and sanitation together
+
+#Calculate age from birthday
+# beattb <- beattb %>%
+#   mutate(bday = as.Date(beattb$FechaNacimiento, "%m/%d/%y")) %>%
+#   mutate (bday = as.Date(ifelse(bday > Sys.Date(), format(bday, "19%y-%m-%d"), format(bday))))
+
+beattb$FechaNacimiento <- as.Date(beattb$FechaNacimiento, "%m/%d/%y")
+beattb$FechaNacimiento <- ifelse(beattb$FechaNacimiento > Sys.Date(), format(beattb$FechaNacimiento, "19%y-%m-%d"), format(beattb$FechaNacimiento))
+
+#Calculate education/maternal education score by dividing distribution into 9 categories
+beattb <- beattb %>%
+  rowwise() %>%
+  mutate(age = trunc(as.numeric(difftime(as.Date("2021-06-07"), as.Date(FechaNacimiento), unit="weeks"))/52.25)) %>%
+  mutate(edu_score = ifelse(age >=20, as.numeric(edu_yrs), as.numeric(gd_edu_yrs))) %>%
+  mutate(edu_score_nml = cut(edu_score, breaks = seq(0, 20, 20/9), labels = c(0:8), include.lowest = TRUE, right = TRUE)) #edu_score_nml = 9 equal categories
+  #mutate(edu_score_std = ntile(beattb$edu_score, 9) -1)
+
+#WAMI categorized based on splitting 32 into even 10 categories
+beattb$pc1_nml <- as.numeric(levels(beattb$pc1_nml))[beattb$pc1_nml]
+beattb$edu_score_nml <-as.numeric(levels(beattb$edu_score_nml))[beattb$edu_score_nml]
+beattb <- beattb %>%
+  rowwise() %>%
+  mutate(income_std = income-1) %>%
+  dplyr::mutate(WAMI = sum(h2o_sani, pc1_nml, edu_score_nml, income_std)) %>% #calculate WAMI
+  mutate(WAMI_std = ntile(WAMI, 10)) %>% #std - 10 deciles
+  mutate(WAMI_nml = cut(WAMI, breaks = seq(0, 32, 3.2), labels = c(1:10), include.lowest = TRUE, right = TRUE)) %>%  # nml - equally scaled
+  dplyr::mutate(WAMI_noW = sum(as.numeric(pc1_nml), as.numeric(edu_score_nml), income_std)) #scored without water & sanitation
+
+
+#histogram of WAMI equal split and each category
+w1 <- plot_histogram(beattb, colnames(beattb[72])) #education raw scores
+ggsave(filename = "WAMI_plot1.png", plot = w1)
+w2 <- plot_histogram(beattb, colnames(beattb[73])) #education normalized
+ggsave(filename = "WAMI_plot2.png", plot = w2)
+w3 <- plot_histogram(beattb, colnames(beattb[75])) #WAMI raw
+ggsave(filename = "WAMI_plot3.png", plot = w3)
+w4 <- plot_histogram(beattb, colnames(beattb[77])) #WAMI normalized
+ggsave(filename = "WAMI_plot4.png", plot = w4)
+w5 <- plot_histogram(beattb, colnames(beattb[69])) #Water and sanitation raw
+ggsave(filename = "WAMI_plot5.png", plot = w5)
+w6 <- plot_histogram(beattb, colnames(beattb[78])) #WAMI w/o water and sanitation
+ggsave(filename = "WAMI_plot7.png", plot = w7)
+
+#plot for presentation
+beattb_plot <- beattb %>% dplyr::select(h2o_sani, pc1_nml, edu_score_nml, income_std)
+myhist <- lapply(colnames(beattb_plot), plot_histogram, data = beattb_plot)
+w9 <- grid.arrange(grobs = myhist, ncol = 2)
+ggsave(filename = "WAMI_plot7_present.png", plot = w9)
+w9
+
+##WAMI categorized non parametrically
+#determine number of observations in each step of ladder
+ladder_counts <- dplyr::count(beattb, SES_scale)
+
+#order the WAMI scores using radix sort
+beattb_order <- beattb[order(beattb$WAMI),]
+beattb_na <- beattb_order[is.na(beattb_order$WAMI) ,] #find observations without guardian education level -> WAMI = NA
+na_counts <- dplyr::count(beattb_na, SES_scale) #count which SES scale score were associated with NA
+
+#remove those NA counts from the SES ladder counts
+for (i in 1:nrow(ladder_counts)){
+  for(j in 1:nrow(na_counts)){
+    ladder_counts$n[i] <- ifelse(ladder_counts$SES_scale[i] == na_counts$SES_scale[j], ladder_counts$n[i] - na_counts$n[j], ladder_counts$n[i])
+  
+  }
+}
+
+#ladder_counts$n[i] <- ifelse(ladder_counts$SES_scale[i] == na_counts$SES_scale[1], ladder_counts$n[i] - na_counts$n[1], ifelse(ladder_counts$SES_scale[i] == na_counts$SES_scale[2], ladder_counts$n[i] - na_counts$n[2], ifelse(ladder_counts$SES_scale[i] == na_counts$SES_scale[3], ladder_counts$n[i] - na_counts$n[3], ladder_counts$n[i])))
+
+#calculate nonparametric WAMI
+beattb_order <- beattb_order[!is.na(beattb_order$WAMI), ]
+beattb_order$WAMI_np <- NA
+j <- 1
+k <- 0
+score <- 1
+for (i in ladder_counts$n){
+  #samples <- ladder_counts$n[i]
+  #print(samples)
+  print(j)
+  print (k)
+  print(i)
+  print(score)
+  k <- k + i
+  beattb_order$WAMI_np[j:k] <- score
+  score <- score + 1
+  j <- j + i
+}
+
+#table(beattb_order$SES_scale, beattb_order$WAMI_np)
+w8 <- plot_histogram(beattb_order, colnames(beattb_order[79]))
+ggsave(filename = "WAMI_plot8.png", plot = w8)
+
+```
+
+###--- Summary Table (Didn't end up using)---###
+```{r, results = "asis"}
+# #change decimal place to hundredths
+# options(scipen=100)
+# options(digits=2)
+# 
+# #summary stats from raw data 
+# simp_sum <- stat.desc(beattb)
+# simp_sum <- as.data.frame(t(as.matrix(simp_sum)))
+# 
+# #remove variables that have missing values (answers that were fill in)
+# simp_sum2 <- simp_sum[rowSums(is.na(simp_sum)) < 2, ]
+# simp_sum_clean <- simp_sum2[6:49,1:8]
+# simp_sum_clean <- simp_sum_clean[-c(7)]
+# assets_clean <- simp_sum_clean[21:44, ]
+# 
+# #save summary statistic table
+# gt_sum <- gt(simp_sum_clean, rownames_to_stub = TRUE)
+# gtsave(gt_sum, "beatTB_summarytable.png")
+# 
+# #save assets statistic as separate table
+# gt_assets <- gt(assets_clean, rownames_to_stub = TRUE)
+# gtsave(gt_assets, "beatTB_asset_summarytable.png")
+# 
+
+# ##summary table describing percent of each response  
+# our_summary1 <-
+#   list("Sex" =
+#        list("Male"         = ~ n_perc(Sex == 1),
+#             "Female"       = ~ n_perc(Sex == 2)),
+#        
+#        "Ethnicity" =
+#        list("No"             = ~ n_perc(ethnicity == 0),
+#             "Aymara"             = ~ n_perc(ethnicity == 1),
+#             "Awajun-Aguaruna"    = ~ n_perc(ethnicity == 2),
+#             "Amahuaca"           = ~ n_perc(ethnicity == 3),
+#             "Amarakaeri"         = ~ n_perc(ethnicity == 4),
+#             "Ashaninca"          = ~ n_perc(ethnicity == 5),
+#             "Cocama"             = ~ n_perc(ethnicity == 6),
+#             "Chamicuro"          = ~ n_perc(ethnicity == 7),
+#             "Matses"             = ~ n_perc(ethnicity == 8),
+#             "Other"              = ~ n_perc(ethnicity == 9),
+#             "Matsiguenga y Nuquencaibo" = ~ n_perc(ethnicity == 10)),
+#             
+#        "Race" =
+#        list("American indian"   = ~ n_perc(race == 1),
+#             "White"   = ~ n_perc(race == 2),
+#             "Black"   = ~ n_perc(race == 3),
+#             "Asian"   = ~ n_perc(race == 4),
+#             "Native Hawaiian or other pacific Islander"   = ~ n_perc(race == 5),
+#             "Mixed"   = ~ n_perc(race == 6),
+#             "Refused"   = ~ n_perc(race == 8),
+#             "Don't know"   = ~ n_perc(race == 9)
+#             ),
+#             
+#        "Education level" =
+#        list("Primary school  not completed" =  ~ n_perc(edu_level == 2),
+#             "Primary school completed" = ~ n_perc(edu_level == 1),
+#             "High school not completed" = ~ n_perc(edu_level == 4),
+#             "High school completed" = ~ n_perc(edu_level == 3),
+#             "Technical studies not completed" = ~ n_perc(edu_level == 6), 
+#             "Technical studies completed" = ~ n_perc(edu_level == 5),
+#             "University not completed" = ~ n_perc(edu_level == 8),
+#             "University completed" = ~ n_perc(edu_level == 7),
+#             "Master's or doctoral not completed" = ~ n_perc(edu_level == 10),
+#             "Master's or doctoral completed" = ~ n_perc(edu_level == 9),
+#             "No Sabe" = ~ n_perc(edu_level == 11),
+#             "Refused" = ~ n_perc(edu_level == 12),
+#             "No school at all" = ~ n_perc(edu_level == 13)
+#             ), 
+#       "Have a Job" = 
+#         list("No" =  ~ n_perc(have_job == 0),
+#              "Yes" =  ~ n_perc(have_job == 1), 
+#              "Refused" =  ~ n_perc(have_job == 2),
+#              "Never worked" =  ~ n_perc(have_job == 3)
+#              ),
+#             
+#       "Drinking Water Source" = 
+#         list("Piped into dwelling" =  ~ n_perc(drk_wt_src == 1),
+#              "Piped to yard/plot" =  ~ n_perc(drk_wt_src == 2),
+#              "Public tap/stand pipe" =  ~ n_perc(drk_wt_src == 3), 
+#              "Tube well or borehold" =  ~ n_perc(drk_wt_src == 4),
+#              "Protected well" =  ~ n_perc(drk_wt_src == 5),
+#              "Unprotected well" =  ~ n_perc(drk_wt_src == 6),
+#              "Surface water (river/dam/lake/pond/stream/canal/irrigation canal)" =  ~ n_perc(drk_wt_src == 7),
+#              "Rain water collection (keep in the container until used)" =  ~ n_perc(drk_wt_src == 8),
+#              "Bottle water" =  ~ n_perc(drk_wt_src == 9),
+#              "Cart with small tank/drum" =  ~ n_perc(drk_wt_src == 10),
+#              "Tanker-truck" =  ~ n_perc(drk_wt_src == 11),
+#              "Other" =  ~ n_perc(drk_wt_src == 12)
+#           
+#         )
+#   )
+# 
+# #Use markdown as markup language
+# orig_opt <- options()$qwraps2_markup
+# options(qwraps2_markup = "markdown")
+# 
+# #summary table 
+# beattb_summary <- summary_table(beattb, our_summary1)
+# beattb_summary
+# print(beattb_summary, rtitle = "Summary Statistics", markup = "markdown" )
+
+
+```
+
+###---Summary for Paper Figures---###
+```{r}
+#select variables for summary table 1
+fig_beattb <- beattb %>% mutate(
+  Female = ifelse(gender == 2, 1, 0), 
+  
+  # Age = dplyr::case_when(
+  #                 age < 20 ~ "< 20 yrs old", 
+  #                 age >= 20  ~ "20 yrs old or older"),
+  
+  # Race = dplyr::recode(race, 
+  #                 "6" = "Mixed Race", 
+  #                 .default = "Not Mixed Race"), 
+  
+  # Ethnicity = dplyr::case_when(
+  #                 ethnicity == 1 | ethnicity == 2 | ethnicity == 3 |ethnicity == 4 | ethnicity == 5 | ethnicity == 6 | ethnicity == 7 | ethnicity == 8 | ethnicity == 10 ~ "Indigenous", 
+  #                 ethnicity == 0 | ethnicity == 9  ~ "Not Indigenous, Other"), 
+  
+  EducationalLevel = dplyr::case_when(
+                  edu_level == 1 | edu_level == 2 ~ "2) Primary School", 
+                  edu_level == 3 | edu_level == 4 ~ "3) High school", 
+                  edu_level == 5 | edu_level == 6 | edu_level == 7 | edu_level == 8 ~ "4) Technical studies or University", 
+                  edu_level == 13 ~ "1) No school at all"), 
+  subHS = ifelse(edu_level == 1 | edu_level == 2 | edu_level == 3 | edu_level == 4 | edu_level == 13, 1, 0), 
+  
+  Employed = ifelse(have_job == 1, 1, 0), 
+  perBedroom = ifelse(hh_num/br_num >= 3, "1) greater than or equal to 3", "2) less than 3"),
+  improvedH2O = ifelse(h2o == 4, 1, 0), 
+  improvedSew = ifelse(sanitation == 4, 1, 0), 
+  # Income = dplyr::recode(income_std,
+  #                 "0" = "< 400", 
+  #                 "1" = "400-600", 
+  #                 "2" = "600-700", 
+  #                 "3" = "700-800", 
+  #                 "4" = "800-900", 
+  #                 "5" = "900-1000",
+  #                 "6" = "1000-1300", 
+  #                 "7" = "1300-1650", 
+  #                 "8" = ">1650"
+  Income = dplyr::case_when(
+                  income_std == 0 | income_std == 1 | income_std == 2 | income_std == 3 | income_std == 4 ~ "1) < 400-900", 
+                  income_std == 5 | income_std == 6 ~ "2) 900-1300", 
+                  income_std == 7 | income_std == 8 ~ "3) > 1300"
+  ), 
+  Roof = dplyr::case_when(
+                  roof == 1 ~ "Etemit", 
+                  roof == 2 ~ "Straw", 
+                  roof == 3 ~ "Metal", 
+                  roof == 4 ~ "Wood", 
+                  roof == 5 ~ "Brick",
+                  roof == 6 ~ "Calamine",
+                  roof == 7 ~ "Drywall"
+  ),
+  Diff5 = dplyr::case_when(
+                  level5 == 1 ~ "WAMI < 5",
+                  level5 == 2 ~ "WAMI = 5",
+                  level5 == 3 ~ "WAMI > 5"
+  )
+  ) 
+
+#select fig 1 variables 
+fig1_var <- fig_beattb %>% dplyr::select(Female, age, EducationalLevel, edu_yrs, Employed, SES_scale, improvedH2O, improvedSew, Income)
+
+# summarize cohort characteristics
+theme_gtsummary_compact()
+theme_gtsummary_journal("jama")
+fig1 <- tbl_summary(fig1_var, 
+                    statistic =  list(
+                      #all_continuous() ~ "{median} ({IQR})"),
+                      all_categorical() ~ "{n} ({p}%)"), 
+                    label = list(
+                      edu_yrs ~ "Educational Years", 
+                      age ~ "Age",
+                      EducationalLevel ~ "Educational Level", 
+                      SES_scale ~ "Self-reported SES Ladder", 
+                      improvedH2O ~ "Improved Drinking Water", 
+                      improvedSew ~ "Improved Sanitation")
+                    )
+fig1
+fig1 %>%
+  as_gt() %>%
+  gt::gtsave("fig1_summary.html")
+
+# summary WAMI 
+fig1b_var <- fig_beattb %>% dplyr::select(iron_board, bed, chair, sofa, cupboard, table, electric_fan, radio, computer, TV, mobile_phone, fridge, watch, bike, bank)
+
+fig1b <- tbl_summary(fig1b_var, 
+                    statistic =  list(
+                      all_categorical() ~ "{p}%"), 
+                    label = list(
+                      iron_board = "Iron (either charcoal or electric)", 
+                      bed = "Bed", 
+                      chair = "Chair or Bench", 
+                      sofa = "Sofa", 
+                      cupboard = "Cupboard", 
+                      table = "Table", 
+                      electric_fan = "Electric Fan", 
+                      radio = "Radio or Transistor", 
+                      computer = "Computer", 
+                      TV = "Television", 
+                      mobile_phone = "Mobile Phone", 
+                      fridge = "Refrigerator", 
+                      watch = "Watch or Clock", 
+                      bike = "Bike", 
+                      bank = "Bank Account")
+                    )
+
+fig1b
+fig1b %>%
+  as_gt() %>%
+  gt::gtsave("fig1b_assets.png")
+
+
+#combine fig 1 a and b together
+fig1_comb <- tbl_stack(list(fig1, fig1b), group_header = c('Cohort Characteristics', "Ownership of Assets")) %>% 
+  modify_header(update = list(
+    label ~ '**Table 1**', 
+    stat_0 ~ '**Total**, N = 608')) %>%
+    modify_footnote(
+      all_stat_cols() ~ "Median (IQR) or Frequency (%)")
+
+fig1_comb
+fig1_comb %>%
+  as_gt() %>%
+  gt::gtsave("fig1_combined.html")
+
+#figure 2 WAMI raw 
+fig2 <- beattb_order %>% ggplot(aes_string(x = colnames(beattb_order[75]))) +
+        geom_bar(fill = "#00AFBB", color = "#00AFBB", alpha = 0.2) +
+        xlab(colnames(beattb_order[75])) + 
+        geom_vline(aes(xintercept = median(beattb_order[[75]])),col='red',size=0.5, linetype= "longdash") +
+        theme_pubr()
+
+fig2
+ggsave(filename = "fig2_WAMI_raw.png", plot = fig2)
+
+#figure 3 ladder raw and rescaled WAMI
+fig3a <- beattb_order %>% ggplot(aes_string(x = colnames(beattb_order[79]))) +
+        geom_bar(fill = "#00AFBB", color = "#00AFBB", alpha = 0.2) +
+        xlab(colnames(beattb_order[75])) + 
+        theme_pubr() +
+        xlab("WAMI/Self-reported Ladder") + 
+        geom_vline(aes(xintercept = median(beattb_order[[79]])),col='red',size=0.5, linetype= "longdash") +
+        scale_x_continuous(labels = label_number(accuracy = 1))
+fig3a
+
+#comparing WAMI and ladder using violin plots
+fig3b <- beattb_order %>%
+  ggplot(aes(x = SES_scale, y = WAMI_np)) +
+  geom_violin(aes(group = cut_width(SES_scale, 1)), color = "#00AFBB", fill = "#00AFBB", alpha = 0.2) +
+  scale_x_discrete(limits = 0:11) +
+  geom_boxplot(aes(group = cut_width(SES_scale, 1)), width=0.1) + 
+  theme_pubr() +
+  scale_y_continuous(labels = label_number(accuracy = 1)) +
+  xlab("Self-reported Ladder SES") + 
+  ylab("WAMI") +
+  geom_abline(intercept = 2*out_sd, slope = 1, col = 'red', lty=2, lwd=0.5, alpha = 0.5) +
+  geom_abline(intercept = -2*out_sd, slope = 1, col = 'red', lty=2, lwd=0.5, alpha = 0.5)  
+fig3b
+
+fig3 <- plot_grid(fig3a, fig3b, nrows=1, labels = LETTERS[1:2])
+ggsave(filename = "fig3_wami_ladder.png", plot = fig3)
+
+fig2b <- plot_grid(fig2, fig3a, nrows=2, labels = LETTERS[1:2])
+ggsave(filename = "fig2b_wami_ladder.png", plot = fig2b)
+
+```
+
+###---Data Exploration: Does stratifying by other characteristics lead to significant differences in SES?---###
+```{r}
+#stratify scores 
+fig4a_var <- fig_beattb %>% dplyr::select(EducationalLevel, SES_scale, WAMI, WAMI_np)
+fig4a <- tbl_summary(fig4a_var, 
+                    by = EducationalLevel,
+                    label = list(
+                      SES_scale ~ "Self-reported SES Ladder")
+                    ) %>%
+          add_p()
+fig4a
+fig4a %>%
+  as_gt() %>%
+  gt::gtsave("fig4a_scores_edu.png")
+
+fig4b_var <- fig_beattb %>% dplyr::select(Income, SES_scale, WAMI, WAMI_np)
+fig4b <- tbl_summary(fig4b_var, 
+                    by = Income,
+                    label = list(
+                      SES_scale ~ "Self-reported SES Ladder")
+                    ) %>%
+          add_p()
+fig4b
+fig4b %>%
+  as_gt() %>%
+  gt::gtsave("fig4b_scores_income.png")
+
+#per bedroom measures if 3 or more people in household per bedroom 
+fig4c_var <- fig_beattb %>% dplyr::select(perBedroom, SES_scale, WAMI, WAMI_np)
+fig4c <- tbl_summary(fig4c_var, 
+                    by = perBedroom,
+                    label = list(
+                      SES_scale ~ "Self-reported SES Ladder")
+                    ) %>%
+          add_p()
+fig4c
+fig4c %>%
+  as_gt() %>%
+  gt::gtsave("fig4c_scores_hh.png")
+  
+#violin plots of scores stratified by educational level
+violin_scores_edu <- lapply(colnames(fig_beattb[,c(31,75, 79)]), plot_violin,  data = fig_beattb, row = colnames(fig_beattb[95]))
+
+fig4_violin_scores_edu <- plot_grid(violin_scores_edu[[1]], violin_scores_edu[[2]],violin_scores_edu[[3]], nrow=3, labels = LETTERS[1:3], scale = 1)
+ggsave(filename = "fig4_violin_edu.png", plot = fig4_violin_scores_edu)
+
+#violin plots of scores stratified by income
+violin_scores_income <- lapply(colnames(fig_beattb[,c(31,75,79)]), plot_violin,  data = fig_beattb, row = colnames(fig_beattb[100]))
+
+fig4_violin_scores_income <- plot_grid(violin_scores_income[[1]], violin_scores_income[[2]],violin_scores_income[[3]], nrow=2, labels = LETTERS[1:3], scale = 1)
+ggsave(filename = "fig4_violin_income.png", plot = fig4_violin_scores_income)
+fig4_violin_scores_income
+
+#violin plots of scores stratified by household size
+violin_scores_hhs <- lapply(colnames(fig_beattb[,c(31,75,79)]), plot_violin,  data = fig_beattb, row = colnames(fig_beattb[97]))
+fig4_violin_scores_hhs <- plot_grid(violin_scores_hhs[[1]], violin_scores_hhs[[2]],violin_scores_hhs[[3]], nrow=2, labels = LETTERS[1:3], scale = 1)
+ggsave(filename = "fig4_violin_hhs.png", plot = fig4_violin_scores_hhs)
+
+
+#violin plots of scores stratified by roof
+violin_scores_roof <- lapply(colnames(fig_beattb[,c(31,75,79)]), plot_violin,  data = fig_beattb, row = colnames(fig_beattb[113]))
+violin_scores_roof
+fig4_violin_scores_roof <- plot_grid(violin_scores_roof[[1]],  violin_scores_roof[[2]], violin_scores_roof[[3]], nrow=3, labels = LETTERS[1:3], scale = 1)
+ggsave(filename = "fig4_violin_roof.png", plot = fig4_violin_scores_roof)
+
+fig4d_var <- fig_beattb %>% dplyr::select(Roof, SES_scale, WAMI, WAMI_np)
+fig4d <- tbl_summary(fig4d_var, 
+                    by = Roof,
+                    label = list(
+                      SES_scale ~ "Self-reported SES Ladder")
+                    ) %>%
+          add_p() 
+fig4d
+fig4d %>%
+  as_gt() %>%
+  gt::gtsave("fig4d_scores_roof.png")
+
+
+young <- beattb_na[beattb_na$age <= 20,]
+noincome <- beattb_na[is.na(beattb_na$income) ,]
+```
+
+
+
+###----Data Exploration: Plots of each variable---###
+```{r}
+#plot histogram for all variables that do not have NA - beattb2
+beattb2 <- beattb[ , colSums(is.na(beattb)) < 8]
+myplots <- lapply(colnames(beattb2[11:51]), plot_histogram, data = beattb2)
+
+#Save plots in a grid
+g1 <- grid.arrange(grobs = myplots[1:9], nrows = 3)
+ggsave(filename = "summary_plot1.png", plot = g1)
+
+g2 <- grid.arrange(grobs = myplots[10:18], nrows = 3)
+ggsave(filename = "summary_plot2.png", plot = g2)
+
+g3 <- grid.arrange(grobs = myplots[19:27], nrows = 3)
+ggsave(filename = "summary_plot3.png", plot = g3)
+
+g4 <- grid.arrange(grobs = myplots[28:36], nrows = 3)
+ggsave(filename = "summary_plot4.png", plot = g4)
+
+g5 <- grid.arrange(grobs = myplots[37:40], nrows = 2)
+ggsave(filename = "summary_plot5.png", plot = g5)
+
+ggsave(filename = "summary_plot6.png", plot = myplots[[12]])
+
+#plot for presentation
+beattb2_plot <- beattb2 %>% dplyr::select(edu_level, edu_yrs, gd_edu_level, SES_scale, drk_wt_src, toilet_type, room_num, br_num, hh_num, income)
+myhist <- lapply(colnames(beattb2_plot), plot_histogram, data = beattb2_plot)
+g6 <- grid.arrange(grobs = myhist, ncol = 5)
+ggsave(filename = "summary_plot6_hist_present.png", plot = g6)
+```
+
+###---Violin/Balloon plots with self reported SES scale---###
+```{r}
+#beattb_plot - beattb dataset with variables that are not meaningful to plot removed
+beattb_plot <- beattb2[-c(1:10, 51)]
+beattb_plot[,19:33] <- lapply(beattb_plot[,19:33], as.factor)
+
+#make violin plots of all the assets vs SES ladder
+myviolins <- lapply(colnames(beattb_plot[19:33]), plot_violin,  data = beattb_plot, colnames(beattb_plot[12]))
+
+#save violin plots as a grid
+v2 <- grid.arrange(grobs = myviolins, nrows = 5)
+ggsave(filename = "violin_plot1.png", plot = v2, width = 15, height = 15)
+
+#convert variables back to numeric for the balloon plots
+beattb_plot <- lapply(beattb_plot, as.factor)
+
+#loop through all the variables and make balloon plots
+myballoons <- lapply(colnames(beattb_plot), plot_balloon,  data = beattb_plot, column = colnames(beattb_plot[12]))
+
+#save as a grid
+b1 <- grid.arrange(grobs = myballoons[1:20], nrows = 5)
+ggsave(filename = "balloon_plot1.png", plot = b1, width = 15, height = 15, limitsize =FALSE)
+
+b2 <- grid.arrange(grobs = myballoons[21:41], nrows = 6)
+ggsave(filename = "balloon_plot2.png", plot = b2, width = 15, height = 15)
+
+t.test(SES_scale ~ bike, data=beattb2)
+myttest <- lapply(beattb_plot[,c("iron_board", "bed", "chair", "sofa", "cupboard", "table", "electric_fan", "radio", "computer", "TV", "mobile_phone", "fridge", "watch", "bike", "bank")], function(x) t.test(beattb_plot$SES_scale ~ x, var.equal = TRUE))
+ttest_p <- data.frame(p.value = sapply(myttest, getElement, name = "p.value"))
+
+ttest_p <- ttest_p %>%
+  mutate(sig = ifelse(p.value <= 0.05, 1, 0)) %>%
+  mutate(super_sig = ifelse(p.value <= 0.01, 1, 0)) 
+ttest_p
+
+wilcox.test(SES_scale ~ iron_board, data = beattb2)
+
+myMWU <- lapply(beattb_plot[,c("iron_board", "bed", "chair", "sofa", "cupboard", "table", "electric_fan", "radio", "computer", "TV", "mobile_phone", "fridge", "watch", "bike", "bank")], function(x) wilcox.test(beattb_plot$SES_scale ~ x, var.equal = TRUE))
+MWU_p <- data.frame(p.value = sapply(myMWU, getElement, name = "p.value"))
+
+MWU_p <- MWU_p %>%
+  mutate(sig = ifelse(p.value <= 0.05, 1, 0)) %>%
+  mutate(super_sig = ifelse(p.value <= 0.01, 1, 0))
+MWU_p
+```
+
+
+###--- Data Exploration: Visuals for comparing ladder to WAMI and differences in categorization ---###
+```{r}
+#violinplot of ladder vs WAMI
+w12 <- beattb_order %>%
+  ggplot(aes(x = SES_scale, y = WAMI_np)) +
+  geom_violin(aes(group = cut_width(SES_scale, 1)), color = "#69B3A2", alpha = 0.6) +
+  scale_x_discrete(limits = 0:11) +
+  theme_minimal() +
+  geom_boxplot(aes(group = cut_width(SES_scale, 1)), width=0.1)
+ggsave(filename = "WAMI_plot12.png", plot = w12)
+
+#heatmap with nonparametric WAMI scoring 
+w13 <- beattb_order %>%
+  ggplot(aes(x= WAMI_np, y  = SES_scale)) +
+  geom_bin2d(bins = 10)  +
+  scale_fill_distiller(palette = "GnBu", na.value = "red") +
+  theme_minimal() +
+  xlab("WAMI") +
+  ylab ("SES Ladder")
+ggsave(filename = "WAMI_plot13.png", plot = w13)
+
+
+#compare if scores are off by 1 or 2
+beattb_order <- beattb_order %>%
+  mutate(delta = WAMI_np - SES_scale) %>% #delta = WAMI nonparametric - ladder
+  mutate(same = ifelse(delta == 0, 1, 0)) %>%
+  # mutate(plusone = ifelse(delta <= 1 & delta >=0, 1, 0)) %>%
+  # mutate(minusone = ifelse(delta >= -1 & delta <=0, 1, 0)) %>%
+  mutate(deltaone = ifelse(delta == 1 | delta ==-1, 1, 0)) %>%
+  # mutate(plus2 = ifelse(delta <= 2 & delta >=0, 1, 0)) %>%
+  # mutate(minus2 = ifelse(delta >= -2 & delta <=0, 1, 0)) %>%
+  mutate(delta2 = ifelse(delta == 2 | delta ==-2, 1, 0)) %>%
+  mutate(delta3 = ifelse(delta == 3 | delta ==-3, 1, 0)) %>%
+  mutate(delta4 = ifelse(delta >= 4 | delta <=-4, 1, 0)) %>%
+  mutate(delta4_noninclusive = ifelse(delta > 4 | delta < -4, 1, 0)) 
+
+#create summary table for number of samples that match exactly, +/- 1 or +/-2
+summary1 <-
+  list("Scores Match" =
+         list("Difference of 0" = ~ qwraps2::n_perc(delta == 0, na_rm = TRUE)),
+
+      "Difference of 1" =
+       list("Difference greater than +1"       = ~ qwraps2::n_perc(plusone == 1, na_rm = TRUE),
+            "Difference greater than -1"       = ~ qwraps2::n_perc(minusone == 1, na_rm = TRUE),
+            "Difference greater than +1 or -1"       = ~ qwraps2::n_perc(deltaone == 1, na_rm = TRUE)),
+       "Difference of 2" =
+       list("Difference greater than +2"       = ~ qwraps2::n_perc(plus2 == 1, na_rm = TRUE),
+            "Difference greater than -2"       = ~ qwraps2::n_perc(minus2 == 1, na_rm = TRUE),
+            "Difference greater than +2 or -2"       = ~ qwraps2::n_perc(delta2 == 1, na_rm = TRUE))
+       )
+
+#print table
+orig_opt <- options()$qwraps2_markup
+options(qwraps2_markup = "markdown")
+sum_tbl <- summary_table(beattb_order, summary1)
+print(sum_tbl, rtitle = "WAMI vs Ladder Summary", cnames = c("All Scores"))
+
+#create plots for all delta variations
+myScores <- lapply(beattb_order[81:86], plot_hist_pair, data = beattb_order, row = beattb_order$WAMI_np)
+
+#plot as grid
+s1 <- grid.arrange(grobs = myScores[1:3], nrows = 1)
+ggsave(filename = "scores_plot3.png", plot = s1)
+
+s2 <- grid.arrange(grobs = myScores[4:6], nrows = 1)
+ggsave(filename = "scores_plot4.png", plot = s2)
+
+
+```
+
+
+###--- Data Exploration: Comparing quantiles of ladder vs WAMI ---###
+```{r}
+#quantile cutoffs
+quantile(beattb_order$WAMI_np, probs = (seq(0,1,1/3)))
+
+#determine where low, medium and high SES groups lie
+# beattb_order <- 
+#   beattb_order %>%
+#   mutate(WAMI_np_tert = ntile(WAMI_np, 3)) %>% #WAMI tertiles
+#   mutate(SES_tert = ntile(SES_scale, 3)) %>% #ladder tertiles
+#   mutate(WAMI_np_quint = ntile(WAMI_np, 5)) %>% #WAMI quintiles
+#   mutate(SES_quint = ntile(SES_scale, 5))  #ladder quintiles
+
+beattb_order$WAMI_np_tert <- ntile(beattb_order$WAMI_np, 3)
+beattb_order$SES_tert <- ntile(beattb_order$SES_scale, 3) 
+beattb_order$WAMI_np_quint <- ntile(beattb_order$WAMI_np, 5)
+beattb_order$SES_quint <- ntile(beattb_order$SES_scale, 5) 
+  
+beattb_order <- beattb_order %>%
+  mutate(tert_delta = WAMI_np_tert - SES_tert) %>%
+  mutate(quint_delta = WAMI_np_quint - SES_quint) %>%
+  mutate(tert_same = ifelse(tert_delta == 0, 1, 0)) %>%
+  mutate(tert_deltaone = ifelse(tert_delta == 1 | tert_delta ==-1, 1, 0)) %>%
+  mutate(tert_delta2 = ifelse(tert_delta == 2 | tert_delta ==-2, 1, 0)) %>%
+  mutate(quint_same = ifelse(quint_delta == 0, 1, 0)) %>%
+  mutate(quint_deltaone = ifelse(quint_delta == 1 | quint_delta ==-1, 1, 0)) %>%
+  mutate(quint_delta2 = ifelse(quint_delta == 2 | quint_delta ==-2, 1, 0)) %>%
+  mutate(quint_delta3 = ifelse(quint_delta == 3 | quint_delta ==-3, 1, 0)) %>%
+  mutate(quint_delta4 = ifelse(quint_delta == 4 | quint_delta <=-4, 1, 0)) 
+
+#recalculate scores if WAMI and SES was grouped into low (1-2), medium (3-4) and high (5-10) based off 40-40-20 percetage breakdown
+beattb_order <- beattb_order %>%
+  mutate(WAMI_np_perc = ifelse(WAMI_np_group5 < 3, 1, ifelse(WAMI_np_group5 >=3 & WAMI_np_group5 <=4, 2, 3))) %>%
+  mutate(SES_np_perc = ifelse(SES_np_group5 < 3, 1, ifelse(SES_np_group5 >=3 & SES_np_group5 <=4, 2, 3)))
+
+#bar graph of nonparametric WAMI vs tertiles to find what scores fall into each tertile
+g1 <- beattb_order %>%
+  ggplot() +
+  geom_bar(aes(x=WAMI_np, fill = as.factor(WAMI_np_tert)), position  = "dodge") +
+  scale_fill_brewer(palette = "Paired", name = "WAMI Tertiles") +
+  theme_minimal() +
+  theme(text = element_text(size=18),
+        axis.text.x = element_text(angle=90, hjust=1)) 
+ggsave(filename = "tertile_barplot1.png", plot = g1)
+
+# #bar graph of SES ladder vs. tertiles to find what scores fall into each tertile
+# g2 <- beattb_order %>%
+#   ggplot() +
+#   geom_bar(aes(x=SES_scale, fill = as.factor(SES_np_group)), position  = "dodge") +
+#   scale_fill_brewer(palette = "Paired", name = "SES Ladder grouped") +
+#   theme_minimal()
+# ggsave(filename = "group_plot2.png", plot = g2)
+
+#bar graph of WAMI np vs. quintiles
+g3 <- beattb_order %>%
+  ggplot() +
+  geom_bar(aes(x=WAMI_np, fill = as.factor(WAMI_np_quint)), position  = "dodge") +
+  scale_fill_brewer(palette = "Paired", name = "WAMI Quintiles") +
+  theme_minimal() +
+  theme(text = element_text(size=18),
+        axis.text.x = element_text(angle=90, hjust=1)) 
+ggsave(filename = "quintile_barplot2.png", plot = g3)
+
+#bar graph of WAMI np vs. percentage groups
+g4 <- beattb_order %>%
+  ggplot() +
+  geom_bar(aes(x=WAMI_np, fill = as.factor(WAMI_np_perc)), position  = "dodge") +
+  scale_fill_brewer(palette = "Paired", name = "WAMI grouped") +
+  theme_minimal()
+ggsave(filename = "group_plot4.png", plot = g4)
+
+#plot tertiles of WAMI np and SES ladder as heat map
+w9 <- beattb_order %>%
+  ggplot(aes(x= WAMI_np_group, y  = SES_np_group)) +
+  geom_bin2d(bins = 2.5)  +
+  scale_fill_distiller(palette = "GnBu") +
+  theme_minimal() +
+  xlab("WAMI") +
+  ylab ("SES Ladder")
+ggsave(filename = "WAMI_plot9.png", plot = w9)
+
+#plot quintiles of WAMI np and SES ladder as heat map
+w10 <- beattb_order %>%
+  ggplot(aes(x= WAMI_np_group5, y  = SES_np_group5)) +
+  geom_bin2d(bins = 4.5)  +
+  scale_fill_distiller(palette = "GnBu") +
+  theme_minimal() +
+  xlab("WAMI") +
+  ylab ("SES Ladder")
+ggsave(filename = "WAMI_plot10.png", plot = w10)
+
+#plot 40-40-20 percentiles of WAMI np and SES ladder as heat map
+w11 <- beattb_order %>%
+  ggplot(aes(x= WAMI_np_perc, y  = SES_np_perc)) +
+  geom_bin2d(bins = 2.5)  +
+  scale_fill_distiller(palette = "GnBu") +
+  theme_minimal() +
+  xlab("WAMI") +
+  ylab ("SES Ladder")
+ggsave(filename = "WAMI_plot11.png", plot = w11)
+```
+
+###--- Table 3 WAMI and Ladder Correlation Coefficients ---###
+```{r}
+#spearman correlation
+pear <- cor.test(beattb_order$SES_scale, beattb_order$WAMI_np, method = "spearman")
+pear.ladder_income <- cor.test(beattb_order$SES_scale, beattb_order$income_std, method = "spearman")
+pear.ladder_ws<- cor.test(beattb_order$SES_scale, beattb_order$h2o_sani, method = "spearman")
+pear.ladder_ass<- cor.test(beattb_order$SES_scale, beattb_order$pc1_nml, method = "spearman")
+pear.ladder_edu<- cor.test(beattb_order$SES_scale, beattb_order$edu_score_nml, method = "spearman")
+pear
+pear.ladder_income
+pear.ladder_ws
+pear.ladder_ass
+pear.ladder_edu
+
+#piecewise correlation for 0-3, 4-7, 8-10
+beattb_order_low <- beattb_order[beattb_order$SES_scale <= 3, ]
+pear.ladder_low <- cor.test(beattb_order_low$SES_scale, beattb_order_low$WAMI_np, method = "spearman")
+
+beattb_order_mid <- beattb_order[beattb_order$SES_scale >3 & beattb_order$SES_scale <8, ]
+pear.ladder_mid <- cor.test(beattb_order_mid$SES_scale, beattb_order_mid$WAMI_np, method = "spearman")
+
+beattb_order_high <- beattb_order[beattb_order$SES_scale >= 8, ]
+pear.ladder_high <- cor.test(beattb_order_high$SES_scale, beattb_order_high$WAMI_np, method = "spearman")
+
+pear.ladder_low
+pear.ladder_mid
+pear.ladder_high
+
+#remove outliers and assess correlation
+beattb_noOut <- beattb_order[beattb_order$delta4 == 1, ]
+pear.noOut <- cor.test(beattb_noOut$SES_scale, beattb_noOut$WAMI_np, method = "pearson")
+
+beattb_order <- beattb_order %>%
+  mutate(SES_retest = SES_scale)
+
+#replace outliers with retest ladder scores
+j = 1
+for (i in match(outlier_recall$PTID, beattb_order$PTID)){
+  beattb_order$SES_retest[i] <- outlier_recall$SES_retest[j]
+  j <- j + 1
+}
+beattb_order$SES_retest <- as.numeric(beattb_order$SES_retest)
+
+#pearson correlation between ladder retest and WAMI
+pear.retest <- cor.test(beattb_order$SES_retest, beattb_order$WAMI_np, method = "pearson")
+
+#collect all pearson correlation estimates and make a table
+cc <- rbind(pear$estimate, pear.retest$estimate, pear.ladder_ws$estimate, pear.ladder_ass$estimate, pear.ladder_edu$estimate, pear.ladder_income$estimate)
+
+cc_name <- rbind("WAMI", "WAMI Retest", "Water and Sanitation", "Assets", "Education", "Income")
+
+cc_tbl <- data.frame(cbind(cc_name, cc))
+colnames(cc_tbl)[1] <- "comparison"
+colnames(cc_tbl)[2] <- "correlation"
+cc_tbl$`correlation` <- as.numeric(as.character(cc_tbl$`correlation`))
+
+corr_tbl <- cc_tbl %>%
+  gt() %>%
+  fmt_number(
+    columns = "correlation", 
+    decimals = 2, 
+    use_seps = FALSE
+  ) %>%
+  # tab_source_note(
+  #   source_note = md("<sup>1</sup>WAMI Retest replaces original WAMI scores with retest values<br><sup>2</sup>Pearson correlation coefficient") <sup>1</sup>
+  # ) %>%
+  cols_label(
+    comparison = html("Indicator of SES"),
+    correlation = html("Correlation with Ladder")
+  ) %>% 
+  tab_footnote(
+    footnote =  "Retest replaces original ladder scores with retest values", 
+    locations = cells_column_labels(columns = comparison)
+  )%>%
+  tab_footnote(
+    footnote =  "Pearson correlation coefficient", 
+    locations = cells_column_labels(columns = correlation)
+  )%>%
+  tab_footnote(
+    footnote = "p < 0.001",
+    locations = cells_body(
+      columns = correlation, 
+      rows = correlation > 0.1
+    )
+  )
+corr_tbl
+
+ corr_tbl %>%
+  gt::gtsave("correlation_tbl.png")
+ 
+#Dec 2021 retest
+#replace outliers with retest ladder scores
+ beattb_order <- beattb_order %>%
+  mutate(SES_retest2 = SES_scale)
+ 
+j = 1
+for (i in match(beattb_out_full$PTID, beattb_order$PTID)){
+  beattb_order$SES_retest2[i] <- beattb_out_full$ladder_retest[j]
+  j <- j + 1
+}
+beattb_order$SES_retest2 <- as.numeric(beattb_order$SES_retest2)
+
+#spearman correlation between ladder retest and WAMI
+pear.retest2 <- cor.test(beattb_order$SES_retest2, beattb_order$WAMI_np, method = "pearson")
+pear.retest2
+```
+
+
+###--- Table 4: Agreement between WAMI and ladder Kappa scores ---###
+```{r}
+#contingency table of ladder vs updated WAMI
+wami_tbl <- table(beattb_order$SES_scale, beattb_order$WAMI_np, dnn = c("SES Ladder", "WAMI"))
+wami_tbl_prop <- prop.table(wami_tbl)
+
+#contingecy table for tertiles
+wami_tbl_tert <- table(beattb_order$SES_tert, beattb_order$WAMI_np_tert, dnn = c("SES Ladder", "WAMI"))
+
+#contingecy table for quintiles
+wami_tbl_quint <- table(beattb_order$SES_quint, beattb_order$WAMI_np_quint, dnn = c("SES Ladder", "WAMI"))
+
+#contingecy table for 40-40-20 percentage groups
+wami_tbl_perc <- table(beattb_order$SES_np_perc, beattb_order$WAMI_np_perc, dnn = c("SES Ladder", "WAMI"))
+
+#compute kappa, unweighted = Cohen's Kappa, weighted = only for ordinal variables
+k.eq <- Kappa(wami_tbl, weights = "Equal-Spacing")
+
+k.eq_tert <- Kappa(wami_tbl_tert, weights = "Equal-Spacing")
+
+k.eq_quint <- Kappa(wami_tbl_quint, weights = "Equal-Spacing")
+
+k.eq_perc <- Kappa(wami_tbl_perc, weights = "Equal-Spacing")
+
+#Fleiss-Cohen gives greater importance to near disagreements
+k.fc <- Kappa(wami_tbl, weights = "Fleiss-Cohen")
+
+k.fc_tert <- Kappa(wami_tbl_tert, weights = "Fleiss-Cohen")
+
+k.fc_quint <- Kappa(wami_tbl_quint, weights = "Fleiss-Cohen")
+
+k.fc_perc <- Kappa(wami_tbl_perc, weights = "Fleiss-Cohen")
+```
+
+###--- Table 4 Tables of agreement ---###
+```{r}
+#table of agreement between ladder and wealth index
+fig5a_var <- beattb_order %>% dplyr::select(same, deltaone, delta2, delta3, delta4)
+fig5a <- tbl_summary(fig5a_var, 
+                    label = list(
+                      same ~ "Same group", 
+                      deltaone ~ "Moved 1 group",
+                      delta2 ~ "Moved 2 groups",
+                      delta3 ~ "Moved 3 groups",
+                      delta4 ~ "Moved 4 or more groups"), 
+                    statistic = list(all_categorical() ~ "{p}%"),
+                    ) 
+fig5a_tbl<- fig5a %>%
+              as_gt() %>%
+              as.data.frame()
+fig5a_tbl <- as.data.frame(t(as.matrix(fig5a_tbl[,5:6]))) 
+colnames(fig5a_tbl) <- unlist(fig5a_tbl[row.names(fig5a_tbl)=='label',])
+fig5a_tbl <- fig5a_tbl[!row.names(fig5a_tbl)=='label',] 
+fig5a_tbl <- cbind(SES_Score = "Ladder", fig5a_tbl)
+fig5a_tbl <- fig5a_tbl%>%
+  mutate(Kappa = k.fc$Weighted[[1]]) #weighted Fleiss Cohen Kappa
+
+# #tertiles
+# fig5b_var <- beattb_order %>% dplyr::select(tert_same, tert_deltaone, tert_delta2)
+# fig5b <- tbl_summary(fig5b_var, 
+#                     label = list(
+#                       tert_same ~ "Same group", 
+#                       tert_deltaone ~ "Moved 1 group",
+#                       tert_delta2 ~ "Moved 2 groups"), 
+#                     statistic = list(all_categorical() ~ "{p}%"),
+#                     ) 
+# fig5b
+# fig5b_tbl<- fig5b %>%
+#               as_gt() %>%
+#               as.data.frame()
+# fig5b_tbl <- as.data.frame(t(as.matrix(fig5b_tbl[,5:6]))) 
+# colnames(fig5b_tbl) <- unlist(fig5b_tbl[row.names(fig5b_tbl)=='label',])
+# fig5b_tbl <- fig5b_tbl[!row.names(fig5b_tbl)=='label',] 
+# fig5b_tbl <- cbind(SES_Score = "Ladder Tertiles", fig5b_tbl)
+# fig5b_tbl <- fig5b_tbl %>%
+#   mutate(Kappa = k.fc_tert$Weighted[[1]]) 
+# 
+# #quintiles
+# fig5c_var <- beattb_order %>% dplyr::select(quint_same, quint_deltaone, quint_delta2, quint_delta3, quint_delta4)
+# fig5c <- tbl_summary(fig5c_var, 
+#                     label = list(
+#                       quint_same ~ "Same group", 
+#                       quint_deltaone ~ "Moved 1 group",
+#                       quint_delta2 ~ "Moved 2 groups", 
+#                       quint_delta3 ~ "Moved 3 groups", 
+#                       quint_delta4 ~ "Moved 4 or more groups"), 
+#                     statistic = list(all_categorical() ~ "{p}%"),
+#                     ) 
+# fig5c
+# fig5c_tbl<- fig5c %>%
+#               as_gt() %>%
+#               as.data.frame()
+# fig5c_tbl <- as.data.frame(t(as.matrix(fig5c_tbl[,5:6]))) 
+# colnames(fig5c_tbl) <- unlist(fig5c_tbl[row.names(fig5c_tbl)=='label',])
+# fig5c_tbl <- fig5c_tbl[!row.names(fig5c_tbl)=='label',] 
+# fig5c_tbl <- cbind(SES_Score = "Ladder Quintiles", fig5c_tbl)
+# fig5c_tbl <- fig5c_tbl %>%
+#   mutate(Kappa = k.fc_quint$Weighted[[1]]) 
+# 
+# #combine quantiles
+# fig5_tbl <- bind_rows(fig5a_tbl, fig5b_tbl, fig5c_tbl) %>%
+#   relocate(Kappa, .after = last_col())
+# 
+# fig5_gt <- fig5_tbl %>%
+#   gt(rowname_col = "SES_Score") %>%
+#   tab_header(
+#     title = md("**% in agreement with WAMI score**")
+#   ) %>%
+#   fmt_missing(
+#     columns = 5:6, 
+#     missing_text = "--"
+#   ) %>%
+#   tab_source_note(
+#     source_note = md("<sup>1</sup>Fleiss-Cohen weighted Kappa")
+#   ) %>%
+#   cols_label(
+#     Kappa = html("Kappa<sup>1</sup>")
+#   )
+# fig5_gt
+# 
+# fig5_gt %>%
+#   gt::gtsave("fig5_quantiletbl.png")
+```
+
+###--- Defining and finding outliers---###
+```{r}
+#standard deviation of difference between WAMI and ladder
+out_sd <- sd(beattb_order$delta)
+
+#violin plot of ladder vs WAMI
+o1 <- beattb_order %>%
+  ggplot(aes(x = SES_scale, y = WAMI_np)) +
+  geom_violin(aes(group = cut_width(SES_scale, 1)), color = "#69B3A2", alpha = 0.6) +
+  scale_x_discrete(limits = 0:11) +
+  theme_minimal() +
+  geom_boxplot(aes(group = cut_width(SES_scale, 1)), width=0.1) +
+  geom_abline(slope=1, intercept=cf[1], lwd=.8)
+
+ggsave(filename = "WAMI_plot12.png", plot = o1)
+geom_abline(slope=cf[2], intercept=cf[1], lwd=.8)
+
+###---Identifying outliers with differences +/- 4---###
+#select observations with difference in scores equal to 2
+beattb_outliers <- beattb_order[beattb_order$delta2 == 0, ]
+
+ot1 <- beattb_outliers %>%
+  ggplot(aes(x= WAMI_np, y  = SES_scale)) +
+  geom_bin2d(bins = 10)  +
+  scale_fill_distiller(palette = "GnBu", na.value = "red") +
+  theme_minimal() +
+  xlab("WAMI") +
+  ylab ("SES Ladder")
+ggsave(filename = "outlier_tile1.png", plot = ot1)
+
+#histogram of SES variables for outliers 
+beattb_outlier_plot <- beattb_outliers %>% dplyr::select(edu_level, gd_edu_level, SES_scale, drk_wt_src, toilet_type, room_num, br_num, hh_num, income, h2o, sanitation, pc1_nml, WAMI_np)
+myOutliers <- lapply(colnames(beattb_outlier_plot), plot_WAMI_hist, data = beattb_outlier_plot)
+
+#save as grid
+o1 <- grid.arrange(grobs = myOutliers[1:13], nrows = 4)
+ggsave(filename = "outlier_hist_grid1.png", plot = o1)
+
+#outliers where difference was 4 or greater, SD*2 = 3.89
+beattb_outliers_ext <- beattb_order[beattb_order$delta4 == 1, ]
+
+#updated
+beattb_outliers_ext_noninclusive <- beattb_order[beattb_order$delta4_noninclusive == 1, ]
+beattb_outliers_ext_inclusive_update <- beattb_order[beattb_order$delta4 == 1, ]
+
+#contingency table of extreme outliers
+outlierExt_tbl <- table(beattb_outliers_ext$SES_scale, beattb_outliers_ext$WAMI_std, dnn = c("SES Ladder", "WAMI"))
+outlierExt_tbl <- addmargins(outlierExt_tbl)
+
+#heatmap of WAMI np vs ladder
+ot2 <- beattb_outliers_ext %>%
+  ggplot(aes(x= WAMI_np, y  = SES_scale)) +
+  geom_bin2d(bins = 10)  +
+  scale_fill_distiller(palette = "GnBu", na.value = "red") +
+  theme_minimal() +
+  xlab("WAMI") +
+  ylab ("SES Ladder")
+ggsave(filename = "outlier_tile2.png", plot = ot2)
+
+#select variables related to extreme outliers
+beattb_outlier_plot_ext <- beattb_outliers_ext %>% dplyr::select(IdData, edu_level, edu_yrs, SES_scale, drk_wt_src, toilet_type, room_num, br_num, hh_num, income, h2o, sanitation, pc1_nml, WAMI_np, WAMI_np_group5, SES_np_group5)
+
+#plot histogram of variables for extreme outliers
+myOutliers_ext <- lapply(colnames(beattb_outlier_plot_ext), plot_WAMI_hist, data = beattb_outlier_plot_ext)
+
+#arrange histograms as grid and save
+o2 <- grid.arrange(grobs = myOutliers_ext[1:13], nrows = 4)
+ggsave(filename = "outlier_hist_grid2_ext.png", plot = o2)
+
+#rearrange outlier variables
+beattb_outlier_plot_ext <- beattb_outlier_plot_ext %>%
+  dplyr::relocate(pc1_nml)%>%
+  dplyr::relocate(SES_np_group5)%>%
+  dplyr::relocate(WAMI_np_group5)%>%
+  dplyr::relocate(income)%>%
+  dplyr::relocate(SES_scale) %>%
+  dplyr::relocate(WAMI_np) %>%
+  dplyr::relocate(IdData)
+
+#print and save table of outliers outside of 2 SD
+gt_outlier <- beattb_outlier_plot_ext %>%
+  gt() %>%
+  tab_header(
+    title = "Outliers greater than +/- 4"
+  )
+gtsave(filename = "outliers.pdf", data = gt_outlier)
+write.csv(beattb_outliers_ext, "outliers.csv")
+
+```
+
+
+###---Retest Data: Check agreement from re-questioned participants---###
+```{r}
+#method of retest 
+beattb_method <- beattb_out[beattb_out$PTID %in% beattb_order$PTID, ]
+
+#select subjects who underwent retest from ordered database
+outlier_recall <- beattb_order[beattb_order$PTID %in% beattb_out$PTID, ]
+outlier_recall <- merge(x = outlier_recall, y = beattb_out, by = "PTID", all.x = TRUE)
+colnames(outlier_recall)[6] <- "SES_test"
+colnames(outlier_recall)[5] <- "SES_retest"
+
+
+#rearrange outlier variables
+outlier_recall <- outlier_recall %>%
+  dplyr::relocate(pc1_nml)%>%
+  dplyr::relocate(income)%>%
+  dplyr::relocate(SES_test) %>%
+  dplyr::relocate(SES_retest) %>%
+  dplyr::relocate(WAMI_np) %>%
+  dplyr::relocate(age) %>%
+  dplyr::relocate(IdData) %>%
+  dplyr::relocate(PTID)
+
+write.csv(outlier_recall, "outlier_july_retest.csv")
+
+fig6_var <- outlier_recall %>% dplyr::select(WAMI_np, SES_test, SES_retest, delta)
+fig6_var$SES_actual <- as.numeric(fig6_var$SES_retest)
+fig6_var <- fig6_var %>% 
+                mutate(delta_retest = (WAMI_np - SES_retest))
+fig6_var <- fig6_var[order(fig6_var$WAMI_np),]
+fig6_var <- cbind(Patient = 1:13, fig6_var)
+
+fig6 <- fig6_var %>%
+  gt(rowname_col = "Patient") %>%
+  cols_label(
+    WAMI_np = "WAMI",
+    SES_test = "Ladder Initial Test", 
+    SES_retest = "Ladder Retest", 
+    delta = "Initial Delta", 
+    delta_retest = "Retest Delta"
+  ) %>%
+          tab_style(
+            style = list(
+            cell_text(weight = "bold")),
+            locations = cells_column_labels(columns = vars(Patient, WAMI_np, SES_test, SES_retest, delta, delta_retest))
+    ) 
+  
+fig6 %>%
+  gt::gtsave("fig6_retest.png")
+
+#Kappa for retest
+outlier_nodeath <- outlier_recall[!(outlier_recall$SES_retest == "fallecido"),]
+outlier_tbl <- table(outlier_nodeath$SES_test, outlier_nodeath$SES_retest, dnn = c("Initial Test", "Retest"))
+k.retest <- Kappa(outlier_tbl, weights = "Fleiss-Cohen")
+
+#updated list of outliers from August 2021 data
+aug_outlier <- beattb_order[beattb_order$IdData %in% beattb_outlier_plot_ext$IdData, ]
+aug_outlier
+
+#identify outliers that were in initial retest 
+retest2_outlier <- aug_outlier[aug_outlier$IdData %in% outlier_recall$IdData == FALSE,]
+retest2_outlier
+
+#Dec 2021 retest
+#calculate difference between WAMI and retested ladder
+ beattb_retest2 <- beattb_retest2 %>% 
+   mutate(delta_retest_WL = WAMI_np - ladder_retest)
+ 
+summary(beattb_retest2)
+summary(beattb_out_full[beattb_out_full$outlier == 1,])
+
+#compare outliers retest scores to non-outliers retest
+outlier <- beattb_out_full[beattb_out_full$outlier == 1,]
+nonoutlier <- beattb_out_full[beattb_out_full$outlier == 0,]
+summary(outlier)
+summary(nonoutlier)
+
+
+#collect all characteristics of retested participants
+retest2 <- beattb_order[beattb_order$PTID %in% beattb_out_full$PTID, ]
+beattb_retest2 <- merge(x = retest2, y = beattb_out_full, by = "PTID", all.x = TRUE)
+colnames(beattb_retest2)[115] <- "delta_retest"
+
+#t-test comparing changes in retest scores
+t.test(beattb_out_full$SES_ladder, beattb_out_full$ladder_retest, paired = TRUE, alternative = "two.sided")
+t.test(beattb_retest2$WAMI_np, beattb_retest2$ladder_retest, paired = TRUE, alternative = "two.sided")
+t.test(beattb_retest2$WAMI_np, beattb_retest2$SES_ladder, paired = TRUE, alternative = "two.sided")
+
+t.test(outlier$delta, nonoutlier$delta, paired = FALSE, alternative = "two.sided")
+t.test(beattb_retest2$delta.x, beattb_retest2$delta_retest_WL, paired = FALSE, alternative = "two.sided")
+
+outlier_full <- beattb_retest2[beattb_retest2$outlier == 1,]
+nonoutlier_full <- beattb_retest2[beattb_retest2$outlier == 0,]
+summary(outlier_full)
+summary(nonoutlier_full)
+t.test(outlier_full$delta_retest_WL, nonoutlier_full$delta_retest_WL, paired = FALSE, alternative = "two.sided")
+t.test(outlier_full$delta.x, nonoutlier_full$delta.x, paired = FALSE, alternative = "two.sided")
+t.test(outlier_full$delta.x, outlier_full$delta_retest_WL, paired = FALSE, alternative = "two.sided")
+t.test(nonoutlier_full$delta.x, nonoutlier_full$delta_retest_WL, paired = FALSE, alternative = "two.sided")
+
+#dot plot of ladder initial vs retest
+fig7a <- beattb_out_full %>% ggplot(aes (x = SES_ladder, y = ladder_retest, color = outlier)) + 
+  geom_count() +
+  scale_color_gradient(low = "Grey", high = "#00AFBB") + 
+  geom_abline(intercept = 0, slope = 1, lty= 3, color = "Red") + 
+  theme_pubr() +
+  xlab("Ladder Initial") + 
+  ylab("Ladder Retest")
+ggsave(filename = "fig7a_ladder_retest.png", plot = fig7a)
+
+#WAMI vs retested
+fig7b <- beattb_retest2 %>% ggplot(aes (x = WAMI_np, y = ladder_retest, color = outlier)) + 
+  geom_count() +
+  scale_color_gradient(low = "Grey", high = "#00AFBB") + 
+  geom_abline(intercept = 0, slope = 1, lty= 3, color = "Red") +
+  theme_pubr() +
+  xlab("WAMI") + 
+  ylab("Ladder Retest")
+ggsave(filename = "fig7b_wami_retest.png", plot = fig7b)
+
+#WAMI vs ladder 
+fig7c <- beattb_retest2 %>% ggplot(aes (x = WAMI_np, y = SES_ladder, color = outlier)) + 
+  geom_count() +
+  scale_color_gradient(low = "Grey", high = "#00AFBB") + 
+  geom_abline(intercept = 0, slope = 1, lty= 3, color = "Red") +
+  theme_pubr() +
+  xlab("WAMI") + 
+  ylab("Ladder Initial")
+ggsave(filename = "fig7c_ladder_wami.png", plot = fig7c)
+
+#sample vs delta between ladder initial and retest
+fig7d <- beattb_out_full %>% ggplot(aes(x = N, y = delta, color = outlier)) +
+  geom_point(size = 3) +
+  scale_color_gradient(low = "Grey", high = "#00AFBB") + 
+  geom_abline(intercept = 0, slope = 0, lty = 3, color = "red") + 
+  theme_pubr() +
+  xlab("Patient #") + 
+  ylab("Initial - Retest (Ladder Score)")
+fig7d
+ggsave(filename = "fig7_ladder_residual.png", plot = fig7d)
+
+#paper figure 
+#initial ladder vs diffference between ladder scores
+beattb_retest2 %>% ggplot(aes(x = outlier, y = delta_retest)) +
+  geom_boxplot(fill = "#00C7D5", alpha = 0.8) +
+  theme_pubr() +
+  xlab("Outlier") +
+  ylab("Initial - Retest Ladder Scores")
+
+fig8a <- beattb_retest2 %>% ggplot(aes(x = SES_scale, y = delta_retest)) +
+  #geom_boxplot(aes(group = cut_width(SES_scale, 1)), width=0.1) +
+  geom_jitter(aes(color = outlier), shape=16, position=position_jitter(0.2)) +
+  geom_abline(intercept = 0, slope = 0, lty = 3, color = "grey") +
+  scale_color_manual(values = c("#00AFBB", "#F4A582"))+
+  scale_x_discrete(limits = 1:10) +
+  #geom_abline(intercept = 0, slope = 0, lty = 3, color = "red") + 
+  theme_pubr() +
+  coord_fixed(ratio = 1) +
+  xlab("Initial Ladder Score") + 
+  ylab("Initial - Retest (Ladder Score)")
+
+fig8b <- beattb_retest2 %>% ggplot(aes(x = SES_scale, y = WAMI_np)) +
+  #geom_boxplot(aes(group = cut_width(ladder_retest, 1)), width=0.1) +
+  geom_jitter(aes(color = outlier), shape=16, position=position_jitter(0.2)) +
+  geom_abline(intercept = 0, slope = 1, lty = 3, color = "grey") +
+  theme_pubr() +
+  scale_x_discrete(limits = 1:10) +
+  scale_y_discrete(limits = 1:10) +
+  expand_limits (x = c(0, 10), y = c(0, 10)) +
+  scale_color_manual(values = c("#00AFBB", "#F4A582"))+
+  coord_fixed(ratio = 1) +
+  xlab("Ladder Initial") +
+  ylab("WAMI")
+
+fig8c <- beattb_retest2 %>% ggplot(aes(x = ladder_retest, y = WAMI_np)) +
+  #geom_boxplot(aes(group = cut_width(ladder_retest, 1)), width=0.1) +
+  geom_jitter(aes(color = outlier), shape=16, position=position_jitter(0.2)) +
+  geom_abline(intercept = 0, slope = 1, lty = 3, color = "grey") +
+  theme_pubr() +
+  scale_x_discrete(limits = 1:10) +
+  scale_y_discrete(limits = 1:10) +
+  expand_limits (x = c(0, 10), y = c(0, 10)) +
+  scale_color_manual(values = c("#00AFBB", "#F4A582"))+
+  coord_fixed(ratio =1) +
+  xlab("Ladder Retest") +
+  ylab("WAMI")
+
+fig8a
+fig8b
+fig8c
+
+fig8 <- plot_grid(fig8a, fig8b, fig8c, nrows=1, labels = LETTERS[1:3])
+ggsave(filename = "fig8_retest.png", plot = fig8)
+ggsave(filename = "fig8a_retest.png", plot = fig8a)
+  
+fig8
+```
+
+
+###--- Frame of reference bias ----###
+```{r}
+#if WAMI was < 5, on average did ladder scores move up 
+beattb_order <- beattb_order%>%
+  mutate(SES_retest = ifelse(PTID %in% retest2$PTID, retest2$SES_retest, SES_scale))
+
+beattb_moveup <- beattb_order[beattb_order$WAMI_np < 5,]
+beattb_movedown <- beattb_order[beattb_order$WAMI_np > 5,]
+beattb_5 <- beattb_order[beattb_order$WAMI_np == 5,]
+beattb_order <- beattb_order %>%
+  mutate(level5 = ifelse(WAMI_np < 5, 1, ifelse(WAMI_np == 5, 2, 3)))
+beattb_order$level5 <- as.factor(beattb_order$level5)
+
+#violin plots comparing deltas
+p_delta <- beattb_order %>%
+    ggplot(aes_string(x = colnames(beattb_order[104]))) + 
+    geom_violin(mapping = aes_string(y = colnames(beattb_order[80])), alpha = 0.5, trim = FALSE, fill = "#00AFBB")  +
+    geom_boxplot(aes_string(y = colnames(beattb_order[80])), width = 0.1) + 
+    theme_minimal() + 
+    xlab ("Above or Below WAMI of 5") + 
+    ylab ("WAMI - Ladder") +
+    theme_pubr()
+ggsave(filename = "delta.png", plot = p_delta)
+
+fig3_present <- plot_grid(fig3b, p_delta, nrows=1, labels = LETTERS[1:2])
+ggsave(filename = "fig3_present_wami_ladder.png", plot = fig3_present)
+
+
+t_delta_var <- fig_beattb %>% dplyr::select(Diff5, delta)
+t_delta <- tbl_summary(t_delta_var, 
+                    by = Diff5,
+                    label = list(
+                      delta ~ "WAMI - Ladder")
+                    ) %>%
+          add_p()
+t_delta
+
+t_delta %>%
+  as_gt() %>%
+  gt::gtsave("delta_table.png")
+
+#is the agreement the same when stratified on sex
+beattb_orderF <- beattb_order[beattb_order$Sex == 2,]
+wami_tbl_F <- table(beattb_orderF$SES_scale, beattb_orderF$WAMI_np, dnn = c("SES Ladder", "WAMI"))
+
+beattb_orderM <- beattb_order[beattb_order$Sex == 1,]
+wami_tbl_M <- table(beattb_orderM$SES_scale, beattb_orderM$WAMI_np, dnn = c("SES Ladder", "WAMI"))
+
+#compute kappa, unweighted = Cohen's Kappa, weighted = only for ordinal variables
+k.F <- Kappa(wami_tbl_F, weights = "Fleiss-Cohen")
+k.F
+confint(k.F)
+k.M <- Kappa(wami_tbl_M, weights = "Fleiss-Cohen")
+k.M
+confint(k.M)
+
+#is the agreement the same when stratified on educational level
+fig_beattb_subHS <- fig_beattb[fig_beattb$subHS == 1,]
+wami_tbl_subHS <- table(fig_beattb_subHS$SES_scale, fig_beattb_subHS$WAMI_np, dnn = c("SES Ladder", "WAMI"))
+
+fig_beattb_supHS <- fig_beattb[fig_beattb$subHS == 0,]
+wami_tbl_supHS <- table(fig_beattb_supHS$SES_scale, fig_beattb_supHS$WAMI_np, dnn = c("SES Ladder", "WAMI"))
+
+#compute kappa, unweighted = Cohen's Kappa, weighted = only for ordinal variables
+k.subHS <- Kappa(wami_tbl_subHS, weights = "Fleiss-Cohen")
+k.subHS
+confint(k.subHS)
+k.supHS <- Kappa(wami_tbl_supHS, weights = "Fleiss-Cohen")
+k.supHS
+confint(k.supHS)
+
+
+#quantiles with distinct cutoffs
+beattb_order <- beattb_order %>%
+  mutate(WAMI_np_cut5 = if(WAMI_np < 3){
+    1
+  } else if (WAMI_np >= 3 & WAMI_np < 5){
+    2
+  } else if (WAMI_np == 5){
+    3
+  } else if (WAMI_np >= 6 & WAMI_np < 8){
+    4
+  } else if (WAMI_np >= 8 ){
+    5
+  }) %>%
+  mutate(SES_cut5 = if(SES_scale < 3){
+    1
+  } else if (SES_scale >= 3 & SES_scale < 5){
+    2
+  } else if (SES_scale == 5){
+    3
+  } else if (SES_scale >= 6 & SES_scale < 8){
+    4
+  } else if (SES_scale >= 8 ){
+    5
+  }) 
+
+wami_tbl_cut5 <- table(beattb_order$WAMI_np_cut5, beattb_order$SES_cut5, dnn = c("SES Ladder", "WAMI"))
+Kappa(wami_tbl_cut5, weights = "Fleiss-Cohen")
+
+```
+
+
+
+
+
+
+###--- Data for CC --- ###
+```{r}
+beattb_cc <- beattb_order %>% dplyr::select(PTID, WAMI, WAMI_np, SES_scale)
+write.csv(beattb_cc, "beattb_cc.csv")
+write.csv(aug_outlier, "outliers_cc.csv")
+
+beattb_order_no <- beattb_order[beattb_order$PTID %in% aug_outlier$PTID == FALSE, ]
+beattb_order_no$FechaVisita <- as.Date(beattb_order_no$FechaVisita, "%m/%d/%y")
+beattb_order_no <- beattb_order_no %>%
+  filter(FechaVisita < as.Date("2021-07-01") & FechaVisita > as.Date("2021-04-01"))
+
+
+beattb_no1to4 <- beattb_order_no[beattb_order_no$SES_scale <= 4, ]
+retest_low <- sample(beattb_no1to4$PTID, size = 10, replace = F)
+
+beattb_no5 <- beattb_order_no[beattb_order_no$SES_scale == 5, ]
+retest_middle <- sample(beattb_no5$PTID, size = 10, replace = F)
+
+beattb_no6to10 <- beattb_order_no[beattb_order_no$SES_scale >= 6, ]
+retest_high <- sample(beattb_no6to10$PTID, size = 10, replace = F)
+
+retest_norm <- cbind(lowPTID = retest_low, middlePTID = retest_middle, highPTID = retest_high, outliers = retest2_outlier$PTID)
+write.csv(retest2_outlier, "retest_outliers.csv")
+write.csv(retest_norm, "retest_normal.csv")
+write.csv(beattb_order_no[beattb_order_no$PTID %in% retest_low, ], "retest_low.csv")
+write.csv(beattb_order_no[beattb_order_no$PTID %in% retest_middle, ], "retest_middle.csv")
+write.csv(beattb_order_no[beattb_order_no$PTID %in% retest_high, ], "retest_high.csv")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+EXTRA CODE (ignore)
+
+###--- Plots
+```{r}
+ 
+ # fig7g <- beattb_retest2 %>% ggplot(aes(x = WAMI_np, y = delta_retest_WL, color = outlier)) +
+ #  geom_count() +
+ #  scale_color_gradient(low = "Grey", high = "#00AFBB") + 
+ #  geom_abline(intercept = 0, slope = 0, lty = 3, color = "grey") + 
+ #  geom_abline(intercept = 4, slope = 0, lty = 3, color = "red") + 
+ #  geom_abline(intercept = -4, slope = 0, lty = 3, color = "red") + 
+ #  theme_pubr() +
+ #  xlab("WAMI") + 
+ #  ylab("WAMI - Ladder Retest")
+ # ggsave(filename = "fig7_ladderbywami2_residual.png", plot = fig7g)
+ # 
+ # beattb_retest2 %>% ggplot(aes(x = SES_ladder, y = delta.x)) +
+  # #geom_boxplot(aes(group = cut_width(SES_ladder, 1)), width=0.2, alpha = 0.7) +
+  # geom_jitter(aes(color = outlier), shape=16, position=position_jitter(0.2)) +
+  # scale_color_manual(values = c("#00AFBB", "#F4A582"))+
+  # #geom_abline(intercept = 0, slope = 0, lty = 3, color = "red") + 
+  # scale_x_discrete(limits = 1:10)+
+  # theme_pubr() +
+  # xlab("Initial Ladder Score") + 
+  # ylab("WAMI - Initial Ladder")
+  # 
+  # beattb_retest2 %>% ggplot(aes(x = SES_ladder, y = delta_retest_WL)) +
+  # #geom_boxplot(aes(group = cut_width(SES_ladder, 1)), width=0.2, alpha = 0.7) +
+  # geom_jitter(aes(color = outlier), shape=16, position=position_jitter(0.2)) +
+  # scale_color_manual(values = c("#00AFBB", "#F4A582"))+
+  # #geom_abline(intercept = 0, slope = 0, lty = 3, color = "red") +
+  # scale_x_discrete(limits = 1:10)+
+  # theme_pubr() +
+  # xlab("Initial Ladder Score") + 
+  # ylab("WAMI - Retested Ladder")
+
+  
+# beattb_retest2 %>%
+#   ggplot(aes(x = SES_scale, y = delta_retest)) +
+#   #geom_violin(aes(group = cut_width(SES_scale, 1)), color = "#00AFBB", fill = "#00AFBB", alpha = 0.2) +
+#   scale_x_discrete(limits = 0:11) +
+#   geom_boxplot(aes(group = cut_width(SES_scale, 1)), width=0.1) + 
+#   theme_pubr() +
+#   scale_y_continuous(labels = label_number(accuracy = 1)) +
+#   xlab("Ladder Initial") + 
+#   ylab("Delta") 
+#   #geom_abline(intercept = 2*out_sd, slope = 1, col = 'red', lty=2, lwd=0.5, alpha = 0.5) +
+#   #geom_abline(intercept = -2*out_sd, slope = 1, col = 'red', lty=2, lwd=0.5, alpha = 0.5)  
+# 
+# 
+# beattb_retest2 %>% ggplot(aes(x = ladder_retest, y = WAMI_np)) +
+#   geom_violin(aes(group = cut_width(ladder_retest, 1)))+
+#   geom_boxplot(aes(group = cut_width(ladder_retest, 1)), width=0.1) +
+#   #geom_jitter(shape=16, position=position_jitter(0.2)) +
+#   #scale_color_gradient(low = "Grey", high = "#00AFBB") + 
+#   geom_abline(intercept = 0, slope = 1, lty = 3, color = "red") + 
+#   theme_pubr() 
+# 
+# beattb_retest2 %>% ggplot(aes(x = SES_scale, y = ladder_retest)) +
+#   #geom_boxplot(aes(group = cut_width(SES_scale, 1)), width=0.1) +
+#   geom_jitter(aes(color = outlier), shape=16, position=position_jitter(0.2)) +
+#   scale_color_manual(values = c("#00AFBB", "#F4A582"))+
+#   geom_abline(intercept = 0, slope = 1, lty = 3, color = "red") + 
+#   theme_pubr() +
+#   xlab("Initial Ladder Score") + 
+#   ylab("Initial - Retest (Ladder Score)")
+# 
+# beattb_retest2 %>% ggplot(aes(x = ladder_retest, y = WAMI_np)) +
+#   geom_boxplot(aes(group = cut_width(ladder_retest, 1)), width=0.1) +
+#   geom_jitter(aes(color = outlier), shape=16, position=position_jitter(0.1)) +
+#   scale_color_manual(values = c("#00AFBB", "#F4A582"))+
+#   geom_abline(intercept = 0, slope = 1, lty = 3, color = "red") + 
+#   theme_pubr()
+
+# fig7e <- beattb_retest2 %>% ggplot(aes(x = SES_ladder, y = delta_retest, color = outlier)) +
+#   geom_point(size = 3) +
+#   scale_color_gradient(low = "Grey", high = "#00AFBB") + 
+#   geom_abline(intercept = 0, slope = 0, lty = 3, color = "red") + 
+#   theme_pubr() +
+#   xlab("Initial Ladder Score") + 
+#   ylab("Initial - Retest (Ladder Score)")
+# ggsave(filename = "fig7_ladderbyladder_residual.png", plot = fig7e)
+# 
+#  fig7f <- beattb_retest2 %>% ggplot(aes(x = WAMI_np, y = delta.x, color = outlier)) +
+#   geom_count() +
+#   scale_color_gradient(low = "Grey", high = "#00AFBB") + 
+#   geom_abline(intercept = 0, slope = 0, lty = 3, color = "grey") + 
+#   geom_abline(intercept = 4, slope = 0, lty = 3, color = "red") + 
+#   geom_abline(intercept = -4, slope = 0, lty = 3, color = "red") + 
+#   theme_pubr() +
+#   xlab("WAMI") + 
+#   ylab("WAMI - Ladder Initial")
+#  ggsave(filename = "fig7_ladderbywami1_residual.png", plot = fig7f)
+```
+
+
+###---Discrimination Index---###
+```{r}
+
+H <- diversity(beattb_order$WAMI)
+J <- H/log(specnumber(beattb_order$WAMI))
+
+Hs <- diversity(beattb_order$SES_scale)
+Js <- H/log(specnumber(beattb_order$SES_scale))
+
+```
+
+
+
+###---WAMI quantiles, equal spacing vs. Ladder comparisons ---###
+```{r}
+#heatmap with updated WAMI scoring that keeps without quantiles
+w6 <- beattb %>%
+  ggplot(aes(x= WAMI_nml, y  = SES_scale)) +
+  geom_bin2d(bins = 10)  +
+  scale_fill_distiller(palette = "GnBu", na.value = "red") +
+  theme_minimal() +
+  xlab("WAMI") +
+  ylab ("SES Ladder")
+ggsave(filename = "WAMI_plot6.png", plot = w6)
+
+# OLD contingency table of ladder vs WAMI
+# wami_tbl <- table(beattb$SES_scale, beattb$WAMI_std, dnn = c("SES Ladder", "WAMI"))
+# wami_tbl <- addmargins(wami_tbl)
+
+# contingency table of ladder vs updated WAMI
+wami_tbl_up <- table(beattb$SES_scale, beattb$WAMI_nml, dnn = c("SES Ladder", "WAMI"))
+wami_tbl_up <- addmargins(wami_tbl_up)
+
+#compare if scores are off by 1 or 2
+beattb <- beattb %>%
+  mutate(delta = WAMI_std - SES_scale) %>%
+  mutate(plusone = ifelse(delta <= 1 & delta >=0, 1, 0)) %>%
+  mutate(minusone = ifelse(delta >= -1 & delta <=0, 1, 0)) %>%
+  mutate(deltaone = ifelse(delta <= 1 & delta >=-1, 1, 0)) %>%
+  mutate(plus2 = ifelse(delta <= 2 & delta >=0, 1, 0)) %>%
+  mutate(minus2 = ifelse(delta >= -2 & delta <=0, 1, 0)) %>%
+  mutate(delta2 = ifelse(delta <= 2 & delta >=-2, 1, 0))
+
+#create summary table for number of samples that match exactly, +/- 1 or +/-2
+summary1 <-
+  list("Scores Match" =
+         list("Difference of 0" = ~ qwraps2::n_perc(delta == 0, na_rm = TRUE)),
+
+      "Difference of 1" =
+       list("Difference greater than +1"       = ~ qwraps2::n_perc(plusone == 1, na_rm = TRUE),
+            "Difference greater than -1"       = ~ qwraps2::n_perc(beattb$minusone == 1, na_rm = TRUE),
+            "Difference greater than +1 or -1"       = ~ qwraps2::n_perc(beattb$deltaone == 1, na_rm = TRUE)),
+       "Difference of 2" =
+       list("Difference greater than +2"       = ~ qwraps2::n_perc(beattb$plus2 == 1, na_rm = TRUE),
+            "Difference greater than -2"       = ~ qwraps2::n_perc(beattb$minus2 == 1, na_rm = TRUE),
+            "Difference greater than +2 or -2"       = ~ qwraps2::n_perc(beattb$delta2 == 1, na_rm = TRUE))
+       )
+
+#print table
+orig_opt <- options()$qwraps2_markup
+options(qwraps2_markup = "markdown")
+sum_tbl <- summary_table(beattb, summary1)
+print(sum_tbl, rtitle = "WAMI vs Ladder Summary", cnames = c("All Scores, N = 320"))
+
+#function to plot sc
+plot_score_hist = function (data, column){
+  beattb %>%
+  ggplot() +
+  geom_bar(aes(x=WAMI_std, fill = as.factor(column)), position  = "dodge") +
+  scale_fill_brewer(palette = "Paired", name = "WAMI - SES Ladder") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+}
+
+myScores <- lapply(beattb[79:84], plot_score_hist, data = beattb)
+
+s1 <- grid.arrange(grobs = myScores[1:3], nrows = 1)
+ggsave(filename = "scores_plot3.png", plot = s1)
+
+s2 <- grid.arrange(grobs = myScores[4:6], nrows = 1)
+ggsave(filename = "scores_plot4.png", plot = s2)
+
+#histogram showing for each WAMI score, counts for the scores that are off by 1
+d1 <- beattb %>%
+  ggplot() +
+  geom_bar(aes(x=WAMI_std, fill = as.factor(deltaone)), position  = "dodge") +
+  scale_fill_brewer(palette = "Paired", name = "WAMI - SES Ladder", labels = c("Difference not within 1", "Difference within 1", "NA")) +
+  theme_minimal()
+ggsave(filename = "scores_plot1.png", plot = d1)
+
+#histogram showing for each WAMI score, counts for the scores that are off by 2
+d2 <- beattb %>%
+  ggplot() +
+  geom_bar(aes(x=WAMI_std, fill = as.factor(delta2)), position  = "dodge") +
+  scale_fill_brewer(palette = "Paired", name = "WAMI - SES Ladder", labels = c("Difference not within 2", "Difference within 2", "NA")) +
+  theme_minimal()
+ggsave(filename = "scores_plot2.png", plot = d2)
+
+#recalculate scores if WAMI and SES was grouped into low (1-3), medium (4-7) and high (8-10)
+beattb <- beattb %>%
+  mutate(WAMI_group = ifelse(WAMI_std <=3, 1, ifelse(WAMI_std >3 & WAMI_std <=7, 2, 3))) %>%
+  mutate(SES_group = ifelse(SES_scale <=4, 1, ifelse(SES_scale >4 & SES_scale <=6, 2, 3))) %>%
+  mutate(delta_group = WAMI_group - SES_group)
+
+beattb <- beattb %>%
+  mutate(WAMI_group_std = ntile(WAMI_std, 3)) %>%
+  mutate(SES_group_std = ntile(SES_scale, 3))
+
+#create contingency table
+wami_tbl2 <- table(beattb$SES_group, beattb$WAMI_group, dnn = c("SES Ladder", "WAMI"))
+wami_tbl2 <- addmargins(wami_tbl2)
+
+w6 <- beattb %>%
+  ggplot(aes(x= WAMI_group, y  = SES_group)) +
+  geom_bin2d(bins = 2.5)  +
+  scale_fill_distiller(palette = "GnBu") +
+  theme_minimal() +
+  xlab("WAMI") +
+  ylab ("SES Ladder")
+ggsave(filename = "WAMI_plot5.png", plot = w6)
+
+```
+
+
+
+
+
+
+
+
+
+###--- Extra plots/code ---###
+```{r}
+##Heatmaps
+contingency <- table(beattb_plot[19:20])
+chisq <- chisq.test(contingency)
+corrplot(chisq$residuals, is.cor = FALSE)
+
+library(tidyverse)
+library(lsr)
+library(seriation)
+
+beattb_corr <- beattb_plot[-c(1:4, 9, 38:40)]
+# function to get chi square p value and Cramers V
+f = function(x,y) {
+    tbl = beattb_plot %>% dplyr::select(x,y) %>% table()
+    chi = chisq.test(tbl)
+    #res = chi$residuals
+    chisq_pval = round(chi$p.value, 4)
+    cramV = round(cramersV(tbl), 4)
+    data.frame(x, y, chisq_pval, cramV) }
+
+# create unique combinations of column names
+# sorting will help getting a better plot (upper triangular)
+df_comb <- data.frame(t(combn(sort(names(beattb_corr)), 2)), stringsAsFactors = F)
+
+# apply function to each variable combination
+df_res <- map2_df(df_comb$X1, df_comb$X2, f)
+corr_sig <- df_res[df_res$chisq_pval <= 0.05,]
+
+# plot results
+c1 <- df_res %>%
+  ggplot(aes(x,y,fill=chisq_pval))+
+  geom_tile()+
+  #geom_text(aes(x,y,label=cramV))+
+  scale_fill_gradient(low="red", high="yellow")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+ggsave(filename = "corr_p1.png", plot = c1)
+
+
+c2 <- df_res %>%
+  ggplot(aes(x,y, fill=res))+
+  geom_tile()+
+  #geom_text(aes(x,y,label=cramV))+
+  scale_fill_gradient(low="red", high="yellow")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+c2
+
+#correlation plots between two categorical variables
+beattb_plot %>%
+  ggplot() +
+  geom_count(mapping = aes(x = chair, y = SES_scale))
+
+beattb_plot %>%
+  ggplot() +
+  geom_boxplot(mapping = aes(x = chair, y = beattb_plot$SES_scale))
+
+beattb_plot %>%
+  count(edu_level, SES_scale) %>%
+    ggplot(aes(x = edu_level, y = SES_scale)) +
+      geom_tile(aes(fill = n))
+
+#correlation matrix as numeric
+p0 <- beattb_plot %>%
+  ggpairs(columns = c(12,15:17),
+          #legend = 1
+          aes(color = as.factor(SES_scale), alpha = 0.4),
+          legend = 1,
+          #lower = list(continuous = "smooth")
+          #upper = list(combo = "facetbar")
+         ) +
+  theme(legend.position = "bottom")
+p0
+
+p1 <- beattb_plot %>%
+  ggpairs(columns = c(12, 5, 7:8),
+          #legend = 1,
+          #aes(color = as.factor(SES_scale)),
+          #lower = list(discrete = "ratio"),
+          #upper = list(combo = "facetbar")
+         ) +
+  theme(legend.position = "bottom")
+p1
+
+#correlation matrix as factors
+p_ <- GGally::print_if_interactive
+
+beattb_factors <- as.data.frame(lapply(beattb_plot, as_factor))
+p1 <- beattb_factors %>%
+  ggpairs(columns = c(12, 5, 7:8),
+          #legend = 1,
+          #aes(color = as.factor(SES_scale)),
+          #lower = list(discrete = "ratio"),
+          upper = list(combo = "facetbar")
+         ) +
+  theme(legend.position = "bottom")
+p1
+ggsave(filename = "corr1.png", plot = p1)
+
+getPlot (p1, 1, 3)
+#  ggpairs(beattb_plot[5:8],
+ #             upper = list(combo = "box_no_facet"),
+  #            lower = list(continuous = "smooth"),
+   #           diag = list(continuous = "density")
+    #          )
+p_(pm)
+
+
+```
+
+
