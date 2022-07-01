@@ -1,0 +1,26 @@
+﻿var_name,calculation/slide,var_type
+gender," 1 , Male| 2 , Female",radio
+edu_level,"2, Primary school  not completed | 1, primary school completed | 4, high school not completed | 3, high school completed | 6, technical studies not completed  | 5, technical studies completed | 8, University not completed | 7, university completed | 10, master's or doctoral not completed | 9, master's or doctoral complted | 11, No Sabe |12, Refused | 13, No school at all",radio
+edu_yrs,,text
+gd_edu_level,"2, Primary school  not completed | 1, primary school completed | 4, high school not completed | 3, high school completed | 6, technical studies not completed  | 5, technical studies completed | 8, University not completed | 7, university completed | 10, master's or doctoral not completed | 9, master's or doctoral complted | 11, No Sabe |12, Refused | 13, No school at all",radio
+gd_edu_yrs,,text
+have_job,"0, No | 1, Yes | 3, never worked | 2, Refused",radio
+SES_scale,,text
+drk_wt_src,"1, Piped into dwelling |2, Piped to yard/plot |3, public tap/stand pipe |4,tube well or borehold |5,protected well |6,unprotected well |7,surface water (river/dam/lake/pond/stream/canal/irrigation canal) |8, Rain water collection (keep in the container until used) | 9, bottle water | 10, cart with small tank/drum |11, tanker-truck | 12, other",radio
+toilet_type,"1, no facility/bush/field or bucket toilet |2, Hanging toilet or Hanging Latrine |3,  Pit latrine without flush (with slab) | 4, Pit Latrine without slab/open pit |  5, Ventilated improved pit latrine  | 6, Compsting toilet (mixed with carbon rick material to produce inoffensive compost  | 7, flush to piped sewer system |8, flush to septic tank | 9, flush to pit latrine | 10, flush to somewhere else | 11, other",radio
+iron_board,,yesno
+bed,,yesno
+chair,,yesno
+sofa,,yesno
+cupboard,,yesno
+table,,yesno
+electric_fan,,yesno
+radio,,yesno
+computer,,yesno
+TV,,yesno
+mobile_phone,,yesno
+fridge,,yesno
+watch,,yesno
+bike,,yesno
+bank,,yesno
+income,"1, <400 | 2, 400 to 600|3, 600 to 700|4, 700 to 800 | 5, 800 to 900 |6, 900 to 1000 | 7, 1000 to 1300 |8, 1300 to 1650 | 9,  > 1650 |0, doesn't know. ",radio
