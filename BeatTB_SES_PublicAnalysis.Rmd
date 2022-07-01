@@ -1,0 +1,227 @@
+---
+title: "BeatTB SES clean"
+author: "Maryann Zhao"
+date: "6/30/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
+library(gridExtra)
+library(pastecs)
+library(qwraps2)
+library(grid)
+library(lattice)
+library(ggplot2)
+library(gt)
+library(glue)
+library(webshot)
+library(GGally)
+library(MASS)
+library(ggpubr)
+library(corrplot)
+library(devtools)
+library(ggbiplot)
+library(RColorBrewer)
+library(factoextra)
+library(BBmisc)
+library(e1071)
+library(formattable)
+library(qwraps2)
+library(vcd)
+library(tidyr)
+library(knitr)
+#library(kableExtra)
+library(finalfit)
+library(DescTools)
+library(cowplot)
+library(vegan)
+library(gtsummary)
+```
+
+Import Data
+```{r}
+#read in beattb data
+beattb <- read_csv("~/beattb.csv")
+beattb_out_full <- read_csv("~/retestfull.csv")
+```
+
+### WAMI: Water and Sanitation 
+```{r}
+#Water and Sanitation - 4 is improved, 0 is unimproved
+beattb <- beattb %>%
+  mutate(h2o = if_else(drk_wt_src <=5, 4, 0)) %>% #improved water
+  mutate(sanitation = if_else(toilet_type >= 5 & toilet_type <=10, 4, 0)) %>% #improved sanitation
+  rowwise() %>%
+  dplyr::mutate(h2o_sani = sum(c_across(h2o:sanitation))) #add water and sanitation together
+```
+
+
+### WAMI: Eduation
+```{r}
+#Convert birthdays to Date type
+beattb$FechaNacimiento <- as.Date(beattb$FechaNacimiento, "%m/%d/%y")
+beattb$FechaNacimiento <- ifelse(beattb$FechaNacimiento > Sys.Date(), format(beattb$FechaNacimiento, "19%y-%m-%d"), format(beattb$FechaNacimiento))
+
+#Calculate education/maternal education score by dividing distribution into 9 categories
+beattb <- beattb %>%
+  rowwise() %>%
+  mutate(age = trunc(as.numeric(difftime(as.Date("2021-06-07"), as.Date(FechaNacimiento), unit="weeks"))/52.25)) %>%
+  mutate(edu_score = ifelse(age >=20, as.numeric(edu_yrs), as.numeric(gd_edu_yrs))) %>%
+  mutate(edu_score_nml = cut(edu_score, breaks = seq(0, 20, 20/9), labels = c(0:8), include.lowest = TRUE, right = TRUE)) #edu_score_nml = 9 equal categories
+
+```
+
+
+### WAMI: Income
+```{r}
+#Recode remaining Income data to categorical 1-9 
+beattb$income[beattb$income < 400 & beattb$income > 9] <- 1
+beattb$income[beattb$income >= 400 & beattb$income < 600] <- 2
+beattb$income[beattb$income >= 600 & beattb$income < 700] <- 3
+beattb$income[beattb$income >= 700 & beattb$income < 800] <- 4
+beattb$income[beattb$income >= 800 & beattb$income < 900] <- 5
+beattb$income[beattb$income >= 900 & beattb$income < 1000] <- 6
+beattb$income[beattb$income >= 1000 & beattb$income < 1300] <- 7
+beattb$income[beattb$income >= 1300 & beattb$income < 1650] <- 8
+beattb$income[beattb$income >= 1650] <- 9
+
+```
+
+### WAMI: PCA Assets
+```{r}
+#beattb.pca - compute PCA based on 15 assets
+#center shifts variables to be zero centered, scale indicates variables should have unit variance before analysis
+beattb.pca <- prcomp(beattb[40:54], center = TRUE, scale.=TRUE)
+
+#Select PC1 
+beattb$pc1 <- beattb.pca$x[,1]
+
+#create 9 quantiles for PCA and cut PCA scores into 9 categories
+len <- (max(beattb.pca$x[,1])- min(beattb.pca$x[,1]))
+brk <- seq(min(beattb.pca$x[,1]), max(beattb.pca$x[,1]), len/9)
+brk[10] <- Inf
+beattb <- beattb %>%
+  mutate(pc1_nml = cut(pc1, breaks = brk, labels = c(0:8), include.lowest = TRUE, right = FALSE)) #pc1_nml - 9 equal categories
+```
+
+### WAMI: Calculate final score
+```{r}
+#WAMI categorized based on splitting 32 into even 10 categories
+beattb$pc1_nml <- as.numeric(levels(beattb$pc1_nml))[beattb$pc1_nml]
+beattb$edu_score_nml <-as.numeric(levels(beattb$edu_score_nml))[beattb$edu_score_nml]
+beattb <- beattb %>%
+  rowwise() %>%
+  mutate(income_nml = income-1) %>%
+  dplyr::mutate(WAMI = sum(h2o_sani, pc1_nml, edu_score_nml, income_nml)) %>% #calculate WAMI
+  #mutate(WAMI_std = ntile(WAMI, 10)) %>% #std - 10 deciles
+  mutate(WAMI_nml = cut(WAMI, breaks = seq(0, 32, 3.2), labels = c(1:10), include.lowest = TRUE, right = TRUE))  # nml - equally categories for 10 pts
+
+##WAMI rescaled from 32-points to 10-points using rank correlation approach
+#determine number of observations in each step of ladder
+ladder_counts <- dplyr::count(beattb, SES_scale)
+
+#order the WAMI scores using radix sort
+beattb_order <- beattb[order(beattb$WAMI),]
+
+#rescale WAMI to 10-points
+beattb_order$WAMI_np <- NA
+j <- 1
+k <- 0
+score <- 1
+for (i in ladder_counts$n){
+  #samples <- ladder_counts$n[i]
+  #print(samples)
+  print(j)
+  print (k)
+  print(i)
+  print(score)
+  k <- k + i
+  beattb_order$WAMI_np[j:k] <- score
+  score <- score + 1
+  j <- j + i
+}
+```
+
+
+
+### Table 4 Agreement between MacArthur Ladder and WAMI
+```{r}
+#Determine difference between WAMI and ladder scores
+beattb_order <- beattb_order %>%
+  mutate(delta = WAMI_np - SES_scale) %>% #delta = WAMI nonparametric - ladder
+  mutate(same = ifelse(delta == 0, 1, 0)) %>%
+  mutate(deltaone = ifelse(delta == 1 | delta ==-1, 1, 0)) %>%
+  mutate(delta2 = ifelse(delta == 2 | delta ==-2, 1, 0)) %>%
+  mutate(delta3 = ifelse(delta == 3 | delta ==-3, 1, 0)) %>%
+  mutate(delta4 = ifelse(delta >= 4 | delta <= -4, 1, 0)) 
+  
+tbl4_var <- beattb_order %>% dplyr::select(same, deltaone, delta2, delta3, delta4, delta_2SD)
+tbl4 <- tbl_summary(tbl4_var, 
+                    label = list(
+                      same ~ "Same group", 
+                      deltaone ~ "Moved 1 group",
+                      delta2 ~ "Moved 2 groups",
+                      delta3 ~ "Moved 3 groups",
+                      delta4 ~ "Moved 4 or more groups"), 
+                    statistic = list(all_categorical() ~ "{p}%"),
+                    ) 
+
+### Identifying Outliers
+#standard deviation of difference between WAMI and ladder
+out_sd <- sd(beattb_order$delta)
+
+#contingency table of ladder vs updated WAMI
+wami_tbl <- table(beattb_order$SES_scale, beattb_order$WAMI_np, dnn = c("SES Ladder", "WAMI"))
+wami_tbl_prop <- prop.table(wami_tbl)
+
+#Fleiss-Cohen gives greater importance to near disagreements
+k.fc <- Kappa(wami_tbl, weights = "Fleiss-Cohen")
+k.fc
+
+```
+
+###--- Table 3 WAMI and Ladder Correlation Coefficients
+```{r}
+#spearman correlation
+pear <- cor.test(beattb_order$SES_scale, beattb_order$WAMI_np, method = "spearman")
+pear.ladder_income <- cor.test(beattb_order$SES_scale, beattb_order$income_nml, method = "spearman")
+pear.ladder_ws<- cor.test(beattb_order$SES_scale, beattb_order$h2o_sani, method = "spearman")
+pear.ladder_ass<- cor.test(beattb_order$SES_scale, beattb_order$pc1_nml, method = "spearman")
+pear.ladder_edu<- cor.test(beattb_order$SES_scale, beattb_order$edu_score_nml, method = "spearman")
+
+ 
+#replace outliers with retest ladder scores
+ beattb_order <- beattb_order %>%
+  mutate(SES_retest2 = SES_scale)
+ 
+j = 1
+for (i in match(beattb_out_full$PTID, beattb_order$PTID)){
+  beattb_order$SES_retest2[i] <- beattb_out_full$ladder_retest[j]
+  j <- j + 1
+}
+beattb_order$SES_retest2 <- as.numeric(beattb_order$SES_retest2)
+
+#spearman correlation between ladder retest and WAMI
+pear.retest2 <- cor.test(beattb_order$SES_retest2, beattb_order$WAMI_np, method = "pearson")
+
+```
+
+### Figure 3 Frame of reference bias 
+```{r}
+#if WAMI was < 5, on average did ladder scores move up 
+beattb_moveup <- beattb_order[beattb_order$WAMI_np < 5,]
+beattb_movedown <- beattb_order[beattb_order$WAMI_np > 5,]
+beattb_5 <- beattb_order[beattb_order$WAMI_np == 5,]
+
+beattb_order <- beattb_order %>%
+  mutate(level5 = ifelse(WAMI_np < 5, 1, ifelse(WAMI_np == 5, 2, 3)))
+beattb_order$level5 <- as.factor(beattb_order$level5)
+
+
+```
+
+
+
